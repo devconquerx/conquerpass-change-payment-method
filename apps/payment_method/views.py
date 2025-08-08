@@ -61,7 +61,7 @@ class CustomerListView(View):
                 'next_starting_after': context['next_starting_after']
             })
         
-        return render(request, 'billing/customer_list.html', context)
+        return render(request, 'payment_method/customer_list.html', context)
     
     def _serialize_customer(self, customer):
         """
@@ -112,7 +112,7 @@ class ChangePaymentMethodView(View):
             'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY
         }
         
-        return render(request, 'billing/change_payment_method.html', context)
+        return render(request, 'payment_method/change_payment_method.html', context)
     
     def post(self, request, customer_email):
         """
