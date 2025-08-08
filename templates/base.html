@@ -50,11 +50,6 @@
                     <div class="hidden md:block">
                         <div class="ml-10 flex items-baseline space-x-4">
                             {% block nav_links %}
-                            <a href="{% url 'facturacion:lista_clientes' %}" 
-                               class="{% if request.resolver_match.url_name == 'lista_clientes' %}bg-primary-500 text-white{% else %}text-gray-600 hover:text-gray-900{% endif %} px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                                <i class="fas fa-users mr-1"></i>
-                                Clientes
-                            </a>
                             {% endblock %}
                         </div>
                     </div>
