@@ -21,9 +21,9 @@ class ChangePaymentMethodView(View):
         # Buscar el cliente por email
         customer_result = stripe_service.get_customer_by_email(customer_email)
         if not customer_result['success']:
-            return JsonResponse({
-                'error': 'Cliente no encontrado con ese email',
-                'details': customer_result['error']
+            return render(request, 'payment_method/customer_not_found.html', {
+                'customer_email': customer_email,
+                'error_details': customer_result['error']
             }, status=404)
         
         customer = customer_result['data']
@@ -31,9 +31,11 @@ class ChangePaymentMethodView(View):
         # Crear Setup Intent
         setup_intent_result = stripe_service.create_setup_intent(customer.id)
         if not setup_intent_result['success']:
-            return JsonResponse({
-                'error': 'Error al crear intent de configuración',
-                'details': setup_intent_result['error']
+            return render(request, 'payment_method/error.html', {
+                'customer_email': customer_email,
+                'error_title': 'Error de configuración de pago',
+                'error_message': 'No pudimos preparar el sistema para configurar tu método de pago. Por favor, inténtalo de nuevo más tarde.',
+                'error_details': setup_intent_result['error']
             }, status=500)
         
         context = {
@@ -56,7 +58,7 @@ class ChangePaymentMethodView(View):
             if not setup_intent_id:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Setup Intent ID requerido'
+                    'error': 'Información de pago incompleta. Por favor, intenta nuevamente.'
                 }, status=400)
             
             stripe_service = StripeService()
@@ -65,7 +67,7 @@ class ChangePaymentMethodView(View):
             if not intent_result['success']:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Error al verificar Setup Intent',
+                    'error': 'No pudimos verificar la información de pago. Por favor, intenta nuevamente.',
                     'details': intent_result['error']
                 }, status=500)
             
@@ -104,10 +106,10 @@ class ChangePaymentMethodView(View):
         except json.JSONDecodeError:
             return JsonResponse({
                 'success': False,
-                'error': 'JSON inválido'
+                'error': 'Los datos enviados no son válidos. Por favor, recarga la página e intenta nuevamente.'
             }, status=400)
         except Exception as e:
             return JsonResponse({
                 'success': False,
-                'error': str(e)
+                'error': 'Ha ocurrido un error inesperado. Por favor, intenta nuevamente o contacta soporte si el problema persiste.'
             }, status=500)

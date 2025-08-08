@@ -218,8 +218,23 @@
         );
 
         if (error) {
-            // Mostrar error al usuario
-            showError(error.message);
+            // Personalizar mensaje de error según el tipo
+            let errorMessage = error.message;
+            if (error.type === 'card_error') {
+                if (error.code === 'card_declined') {
+                    errorMessage = 'Tu tarjeta fue rechazada. Por favor, verifica los datos o intenta con otra tarjeta.';
+                } else if (error.code === 'incorrect_cvc') {
+                    errorMessage = 'El código de seguridad (CVC) es incorrecto. Por favor, verifica el número de 3 dígitos en el reverso de tu tarjeta.';
+                } else if (error.code === 'expired_card') {
+                    errorMessage = 'Tu tarjeta ha expirado. Por favor, intenta con una tarjeta válida.';
+                } else if (error.code === 'incorrect_number') {
+                    errorMessage = 'El número de tarjeta es incorrecto. Por favor, verifica los dígitos e intenta nuevamente.';
+                }
+            } else if (error.type === 'validation_error') {
+                errorMessage = 'Por favor, completa todos los campos de la tarjeta correctamente.';
+            }
+            
+            showError(errorMessage);
             setLoading(false);
         } else {
             // Setup Intent confirmado exitosamente
@@ -245,7 +260,7 @@
                     showError(result.error);
                 }
             } catch (fetchError) {
-                showError('Error al procesar la respuesta del servidor');
+                showError('No pudimos conectar con el servidor. Por favor, verifica tu conexión a internet e intenta nuevamente.');
                 console.error('Error:', fetchError);
             }
             

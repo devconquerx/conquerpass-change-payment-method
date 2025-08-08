@@ -1,0 +1,94 @@
+{% extends "customer_base.html" %}
+
+{% block title %}Error - ConquerPass{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-6 lg:px-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="text-center py-16">
+            <!-- Icon -->
+            <div class="rounded-full bg-red-100 w-24 h-24 flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-exclamation-triangle text-4xl text-red-500"></i>
+            </div>
+            
+            <!-- Title -->
+            <h1 class="text-3xl font-bold text-gray-900 mb-4">
+                {{ error_title|default:"Ha ocurrido un error" }}
+            </h1>
+            
+            <!-- Description -->
+            <p class="text-lg text-gray-600 mb-8">
+                {{ error_message|default:"Lo sentimos, hemos encontrado un problema al procesar tu solicitud." }}
+            </p>
+            
+            {% if error_details %}
+            <!-- Error details card -->
+            <div class="bg-red-50 border border-red-200 rounded-lg p-6 mb-8 text-left">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-info-circle text-red-400 mt-1"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800 mb-2">Detalles técnicos</h3>
+                        <div class="text-sm text-red-700">
+                            {{ error_details }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Actions -->
+            <div class="space-y-4">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                    <h3 class="text-lg font-semibold text-blue-900 mb-4">¿Qué puedes hacer?</h3>
+                    <div class="space-y-3 text-left">
+                        <div class="flex items-start">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-redo text-blue-500 mt-1"></i>
+                            </div>
+                            <div class="ml-3">
+                                <div class="text-sm font-medium text-blue-900">Intenta nuevamente</div>
+                                <div class="text-sm text-blue-700">El problema podría ser temporal</div>
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-clock text-blue-500 mt-1"></i>
+                            </div>
+                            <div class="ml-3">
+                                <div class="text-sm font-medium text-blue-900">Espera unos minutos</div>
+                                <div class="text-sm text-blue-700">A veces los servicios externos necesitan un momento</div>
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-headset text-blue-500 mt-1"></i>
+                            </div>
+                            <div class="ml-3">
+                                <div class="text-sm font-medium text-blue-900">Contacta soporte</div>
+                                <div class="text-sm text-blue-700">Si el problema persiste, nuestro equipo te ayudará</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button onclick="history.back()" class="px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
+                        <i class="fas fa-arrow-left mr-2"></i>
+                        Volver atrás
+                    </button>
+                    <button onclick="location.reload()" class="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                        <i class="fas fa-redo mr-2"></i>
+                        Intentar de nuevo
+                    </button>
+                    <a href="mailto:soporte@conquerpass.com" class="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-envelope mr-2"></i>
+                        Contactar Soporte
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

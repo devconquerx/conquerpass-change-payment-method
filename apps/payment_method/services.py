@@ -29,7 +29,7 @@ class StripeService:
             if not customers.data:
                 return {
                     'success': False,
-                    'error': 'Cliente no encontrado con ese email',
+                    'error': 'No encontramos un cliente registrado con esta dirección de email en nuestro sistema de pagos.',
                     'error_type': 'NotFound'
                 }
             
@@ -39,10 +39,22 @@ class StripeService:
             }
             
         except stripe.error.StripeError as e:
+            # Personalizar mensajes de error según el tipo
+            error_message = str(e)
+            if 'rate limit' in error_message.lower():
+                error_message = 'El sistema está muy ocupado en este momento. Por favor, espera un momento e intenta nuevamente.'
+            elif 'network' in error_message.lower():
+                error_message = 'Problema de conexión con el servicio de pagos. Por favor, verifica tu conexión e intenta nuevamente.'
+            elif 'invalid' in error_message.lower():
+                error_message = 'Los datos proporcionados no son válidos. Por favor, verifica la información e intenta nuevamente.'
+            else:
+                error_message = 'Ha ocurrido un error con el servicio de pagos. Por favor, intenta nuevamente más tarde.'
+                
             return {
                 'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__
+                'error': error_message,
+                'error_type': type(e).__name__,
+                'original_error': str(e)
             }
     
     def create_setup_intent(self, customer_id: str) -> Dict[str, Any]:
@@ -72,10 +84,22 @@ class StripeService:
             }
             
         except stripe.error.StripeError as e:
+            # Personalizar mensajes de error según el tipo
+            error_message = str(e)
+            if 'rate limit' in error_message.lower():
+                error_message = 'El sistema está muy ocupado en este momento. Por favor, espera un momento e intenta nuevamente.'
+            elif 'network' in error_message.lower():
+                error_message = 'Problema de conexión con el servicio de pagos. Por favor, verifica tu conexión e intenta nuevamente.'
+            elif 'invalid' in error_message.lower():
+                error_message = 'Los datos proporcionados no son válidos. Por favor, verifica la información e intenta nuevamente.'
+            else:
+                error_message = 'Ha ocurrido un error con el servicio de pagos. Por favor, intenta nuevamente más tarde.'
+                
             return {
                 'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__
+                'error': error_message,
+                'error_type': type(e).__name__,
+                'original_error': str(e)
             }
     
     def get_setup_intent(self, setup_intent_id: str) -> Dict[str, Any]:
@@ -97,10 +121,22 @@ class StripeService:
             }
             
         except stripe.error.StripeError as e:
+            # Personalizar mensajes de error según el tipo
+            error_message = str(e)
+            if 'rate limit' in error_message.lower():
+                error_message = 'El sistema está muy ocupado en este momento. Por favor, espera un momento e intenta nuevamente.'
+            elif 'network' in error_message.lower():
+                error_message = 'Problema de conexión con el servicio de pagos. Por favor, verifica tu conexión e intenta nuevamente.'
+            elif 'invalid' in error_message.lower():
+                error_message = 'Los datos proporcionados no son válidos. Por favor, verifica la información e intenta nuevamente.'
+            else:
+                error_message = 'Ha ocurrido un error con el servicio de pagos. Por favor, intenta nuevamente más tarde.'
+                
             return {
                 'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__
+                'error': error_message,
+                'error_type': type(e).__name__,
+                'original_error': str(e)
             }
     
     def set_default_payment_method(self, customer_id: str, payment_method_id: str) -> Dict[str, Any]:
@@ -128,8 +164,20 @@ class StripeService:
             }
             
         except stripe.error.StripeError as e:
+            # Personalizar mensajes de error según el tipo
+            error_message = str(e)
+            if 'rate limit' in error_message.lower():
+                error_message = 'El sistema está muy ocupado en este momento. Por favor, espera un momento e intenta nuevamente.'
+            elif 'network' in error_message.lower():
+                error_message = 'Problema de conexión con el servicio de pagos. Por favor, verifica tu conexión e intenta nuevamente.'
+            elif 'invalid' in error_message.lower():
+                error_message = 'Los datos proporcionados no son válidos. Por favor, verifica la información e intenta nuevamente.'
+            else:
+                error_message = 'Ha ocurrido un error con el servicio de pagos. Por favor, intenta nuevamente más tarde.'
+                
             return {
                 'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__
+                'error': error_message,
+                'error_type': type(e).__name__,
+                'original_error': str(e)
             }
