@@ -19,10 +19,10 @@ from django.urls import path, include
 from django.shortcuts import redirect
 
 def home_redirect(request):
-    return redirect('billing:customer_list')
+    return redirect('facturacion:lista_clientes')
 
 urlpatterns = [
     path('', home_redirect, name='home'),
     path('admin/', admin.site.urls),
-    path('billing/', include('billing.urls')),
+    path('facturacion/', include('billing.urls')),
 ]

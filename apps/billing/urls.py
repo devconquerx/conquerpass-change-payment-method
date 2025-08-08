@@ -1,8 +1,9 @@
 from django.urls import path
 from . import views
 
-app_name = 'billing'
+app_name = 'facturacion'
 
 urlpatterns = [
-    path('customers/', views.CustomerListView.as_view(), name='customer_list'),
+    path('clientes/', views.CustomerListView.as_view(), name='lista_clientes'),
+    path('cliente/<str:customer_email>/cambiar-metodo-pago/', views.ChangePaymentMethodView.as_view(), name='cambiar_metodo_pago'),
 ]

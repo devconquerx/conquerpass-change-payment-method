@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,7 +35,7 @@
     
     {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-gray-50 font-sans">
+<body class="bg-gray-50 font-sans h-full flex flex-col">
     <!-- Navigation -->
     <nav class="bg-white shadow-sm border-b border-gray-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -50,8 +50,8 @@
                     <div class="hidden md:block">
                         <div class="ml-10 flex items-baseline space-x-4">
                             {% block nav_links %}
-                            <a href="{% url 'billing:customer_list' %}" 
-                               class="{% if request.resolver_match.url_name == 'customer_list' %}bg-primary-500 text-white{% else %}text-gray-600 hover:text-gray-900{% endif %} px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            <a href="{% url 'facturacion:lista_clientes' %}" 
+                               class="{% if request.resolver_match.url_name == 'lista_clientes' %}bg-primary-500 text-white{% else %}text-gray-600 hover:text-gray-900{% endif %} px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 <i class="fas fa-users mr-1"></i>
                                 Clientes
                             </a>
@@ -73,12 +73,12 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <main class="flex-grow max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 w-full">
         {% block content %}{% endblock %}
     </main>
 
     <!-- Footer -->
-    <footer class="bg-white border-t border-gray-200 mt-12">
+    <footer class="bg-white border-t border-gray-200 mt-auto">
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center">
                 <div class="text-sm text-gray-500">
