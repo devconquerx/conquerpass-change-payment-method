@@ -10,3 +10,5 @@ gunicorn==23.0.0
 whitenoise==6.8.2
 django-extensions==3.2.3
 stripe==11.2.0
+PyMySQL==1.1.0
+python-decouple==3.8

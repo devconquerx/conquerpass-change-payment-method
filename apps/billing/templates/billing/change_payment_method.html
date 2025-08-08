@@ -10,7 +10,7 @@
             <!-- Header -->
             <div class="mb-8 text-center">
                 <h1 class="text-3xl font-bold text-gray-900">
-                    <i class="fas fa-credit-card text-stripe-500 mr-3"></i>
+                    <i class="fas fa-credit-card text-black mr-3"></i>
                     Configurar Método de Pago
                 </h1>
                 <p class="mt-3 text-lg text-gray-600">
@@ -27,6 +27,9 @@
                     <div class="ml-3">
                         <div class="text-sm font-medium text-blue-800">
                             Configurando método de pago para: <strong>{{ customer.name|default:customer.email }}</strong>
+                            {% if customer.name and customer.email %}
+                                <br><span class="font-normal">{{ customer.email }}</span>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -56,7 +59,7 @@
                                 <i class="fas fa-credit-card mr-2 text-gray-400"></i>
                                 Información de la tarjeta
                             </label>
-                            <div class="border border-gray-300 rounded-md p-4 bg-white focus-within:ring-1 focus-within:ring-stripe-500 focus-within:border-stripe-500" style="min-height: 50px;">
+                            <div class="border border-gray-300 rounded-md p-4 bg-white focus-within:ring-1 focus-within:ring-black focus-within:border-black" style="min-height: 50px;">
                                 <!-- Stripe Elements se montará aquí -->
                                 <div id="card-element">
                                     <!-- Stripe Elements creará los inputs aquí -->
@@ -72,7 +75,7 @@
                         <div id="card-errors" class="text-red-600 text-sm mb-4" role="alert"></div>
 
                         <div class="mt-6">
-                            <button type="submit" id="submit-button" class="w-full flex justify-center items-center px-6 py-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-stripe-500 hover:bg-stripe-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-stripe-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button type="submit" id="submit-button" class="w-full flex justify-center items-center px-6 py-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                                 <i class="fas fa-plus-circle mr-3"></i>
                                 <span id="button-text">Configurar Método de Pago</span>
                                 <div id="spinner" class="hidden ml-3">

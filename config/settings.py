@@ -17,8 +17,9 @@ import sys
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Add apps directory to Python path
+# Add apps and services directories to Python path
 sys.path.insert(0, str(BASE_DIR / 'apps'))
+sys.path.insert(0, str(BASE_DIR / 'services'))
 
 
 # Quick-start development settings - unsuitable for production
@@ -80,14 +81,24 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# Database configuration helper
+db_host = config('DB_HOST', default='')
+db_options = {}
+
+if db_host.startswith('/') or db_host.endswith('.sock'):
+    # Para sockets Unix, usar OPTIONS con unix_socket y HOST vacío
+    db_options = {'unix_socket': db_host}
+    db_host = ''
+
 DATABASES = {
     'default': {
         'ENGINE': config('DB_ENGINE'),
         'NAME': config('DB_NAME') if config('DB_ENGINE') != 'django.db.backends.sqlite3' else BASE_DIR / config('DB_NAME'),
         'USER': config('DB_USER', default=''),
         'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default=''),
+        'HOST': db_host,
         'PORT': config('DB_PORT', default=''),
+        'OPTIONS': db_options,
     }
 }
 
@@ -135,3 +146,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Stripe Configuration
 STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='')
 STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='')
+
+# WordPress Database Configuration
+WORDPRESS_DB_HOST = config('WORDPRESS_DB_HOST', default='localhost')
+WORDPRESS_DB_USER = config('WORDPRESS_DB_USER', default='')
+WORDPRESS_DB_PASSWORD = config('WORDPRESS_DB_PASSWORD', default='')
+WORDPRESS_DB_NAME = config('WORDPRESS_DB_NAME', default='')
+WORDPRESS_DB_PORT = config('WORDPRESS_DB_PORT', default='', cast=lambda x: int(x) if x else None)

@@ -9,6 +9,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_http_methods
 import json
 from .services import StripeService
+from services.wordpress_service import WordPressService
 
 
 class CustomerListView(View):
@@ -149,6 +150,19 @@ class ChangePaymentMethodView(View):
                     )
                     if not default_result['success']:
                         print(f"Warning: No se pudo establecer como predeterminado: {default_result['error']}")
+                
+                # Actualizar órdenes de WordPress con el nuevo método de pago
+                wp_service = WordPressService()
+                wp_update_result = wp_service.update_stripe_source_id(
+                    email=customer_email,
+                    new_payment_method_id=intent.payment_method
+                )
+                
+                # Log del resultado pero no fallar si hay error en WordPress
+                if wp_update_result['success']:
+                    print(f"WordPress: {wp_update_result['message']}")
+                else:
+                    print(f"Warning WordPress: {wp_update_result['error']}")
             
             return JsonResponse({
                 'success': True,
