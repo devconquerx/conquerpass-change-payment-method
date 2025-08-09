@@ -33,6 +33,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+# Email encryption key for URL protection
+EMAIL_ENCRYPTION_KEY = config('EMAIL_ENCRYPTION_KEY').encode()
+
 
 # Application definition
 

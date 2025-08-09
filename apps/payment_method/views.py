@@ -7,6 +7,7 @@ from django.utils.decorators import method_decorator
 import json
 from .services import StripeService
 from services.wordpress_service import WordPressService
+from apps.core.utils import decrypt_email
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -15,7 +16,15 @@ class ChangePaymentMethodView(View):
     Vista para cambiar el método de pago de un cliente usando Stripe Elements.
     """
     
-    def get(self, request, customer_email):
+    def get(self, request, encrypted_email):
+        try:
+            customer_email = decrypt_email(encrypted_email)
+        except Exception:
+            return render(request, 'payment_method/customer_not_found.html', {
+                'customer_email': 'Email inválido',
+                'error_details': 'El enlace proporcionado no es válido.'
+            }, status=400)
+            
         stripe_service = StripeService()
         
         # Buscar el cliente por email
@@ -41,16 +50,25 @@ class ChangePaymentMethodView(View):
         context = {
             'customer': customer,
             'customer_email': customer_email,
+            'encrypted_email': encrypted_email,
             'setup_intent_client_secret': setup_intent_result['data']['client_secret'],
             'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY
         }
         
         return render(request, 'payment_method/change_payment_method.html', context)
     
-    def post(self, request, customer_email):
+    def post(self, request, encrypted_email):
         """
         Maneja la confirmación del setup del método de pago.
         """
+        try:
+            customer_email = decrypt_email(encrypted_email)
+        except Exception:
+            return JsonResponse({
+                'success': False,
+                'error': 'El enlace proporcionado no es válido.'
+            }, status=400)
+            
         try:
             data = json.loads(request.body)
             setup_intent_id = data.get('setup_intent_id')

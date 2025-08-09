@@ -242,7 +242,7 @@
             
             // Notificar al servidor sobre el éxito
             try {
-                const response = await fetch('{% url "payment_method:cambiar_metodo_pago" customer_email=customer_email %}', {
+                const response = await fetch('{% url "payment_method:cambiar_metodo_pago" encrypted_email=encrypted_email %}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
