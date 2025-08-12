@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 from decouple import config
 import sys
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -152,3 +153,53 @@ WORDPRESS_DB_USER = config('WORDPRESS_DB_USER', default='')
 WORDPRESS_DB_PASSWORD = config('WORDPRESS_DB_PASSWORD', default='')
 WORDPRESS_DB_NAME = config('WORDPRESS_DB_NAME', default='')
 WORDPRESS_DB_PORT = config('WORDPRESS_DB_PORT', default='', cast=lambda x: int(x) if x else None)
+
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'django.log'),
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'root': {
+        'handlers': ['file', 'console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'conquerpass': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# dLocal Configuration
+DLOCAL_API_KEY = config('DLOCAL_API_KEY', default='')
+DLOCAL_SECRET_KEY = config('DLOCAL_SECRET_KEY', default='')
+DLOCAL_BASE_URL = config('DLOCAL_BASE_URL', default='https://api-sbx.dlocalgo.com')

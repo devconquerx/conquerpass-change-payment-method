@@ -13,12 +13,24 @@
             
             <!-- Title -->
             <h1 class="text-3xl font-bold text-gray-900 mb-4">
-                Cliente no encontrado
+                {% if customer_email == "Email inválido" %}
+                    Enlace no válido
+                {% else %}
+                    Cliente no encontrado
+                {% endif %}
             </h1>
             
             <!-- Description -->
             <p class="text-lg text-gray-600 mb-8">
-                No pudimos encontrar un cliente con el email <strong>{{ customer_email }}</strong> en nuestros registros de Stripe.
+                {% if customer_email == "Email inválido" %}
+                    El enlace que utilizaste no es válido o ha expirado.
+                {% elif "órdenes" in error_details %}
+                    No encontramos órdenes asociadas a la cuenta: <strong>{{ customer_email }}</strong>
+                {% elif "Stripe" in error_details %}
+                    No pudimos acceder a tu información de pago para: <strong>{{ customer_email }}</strong>
+                {% else %}
+                    No pudimos encontrar información para: <strong>{{ customer_email }}</strong>
+                {% endif %}
             </p>
             
             <!-- Error details card -->
@@ -30,9 +42,23 @@
                     <div class="ml-3">
                         <h3 class="text-sm font-medium text-red-800 mb-2">¿Qué significa esto?</h3>
                         <div class="text-sm text-red-700 space-y-2">
-                            <p>• El email proporcionado no está registrado como cliente en nuestro sistema de pagos</p>
-                            <p>• Es posible que haya un error tipográfico en la dirección de email</p>
-                            <p>• El cliente podría no haber realizado ninguna compra anteriormente</p>
+                            {% if customer_email == "Email inválido" %}
+                                <p>• El enlace de cambio de método de pago no es válido</p>
+                                <p>• Es posible que el enlace esté dañado, incompleto o haya expirado</p>
+                                <p>• Intenta usar el enlace original que recibiste</p>
+                            {% elif "órdenes" in error_details %}
+                                <p>• No encontramos compras previas para <strong>{{ customer_email }}</strong></p>
+                                <p>• Es posible que aún no hayas realizado ninguna compra</p>
+                                <p>• Verifica que estés usando el email y enlace correctos</p>
+                            {% elif "Stripe" in error_details %}
+                                <p>• La cuenta <strong>{{ customer_email }}</strong> no está configurada con Stripe</p>
+                                <p>• Es posible que uses un método de pago diferente (dLocal)</p>
+                                <p>• Verifica que estés usando el email y enlace correctos</p>
+                            {% else %}
+                                <p>• No pudimos encontrar la cuenta <strong>{{ customer_email }}</strong> en nuestro sistema</p>
+                                <p>• Verifica que estés usando el email y enlace correctos</p>
+                                <p>• Es posible que aún no hayas realizado ninguna compra</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -43,46 +69,19 @@
                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
                     <h3 class="text-lg font-semibold text-blue-900 mb-4">¿Qué puedes hacer?</h3>
                     <div class="space-y-3 text-left">
+                       
                         <div class="flex items-start">
                             <div class="flex-shrink-0">
                                 <i class="fas fa-check text-blue-500 mt-1"></i>
                             </div>
                             <div class="ml-3">
-                                <div class="text-sm font-medium text-blue-900">Verifica la dirección de email</div>
-                                <div class="text-sm text-blue-700">Asegúrate de que la dirección esté escrita correctamente</div>
-                            </div>
-                        </div>
-                        <div class="flex items-start">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-check text-blue-500 mt-1"></i>
-                            </div>
-                            <div class="ml-3">
-                                <div class="text-sm font-medium text-blue-900">Contacta al administrador</div>
-                                <div class="text-sm text-blue-700">Si crees que es un error, ponte en contacto con soporte técnico</div>
-                            </div>
-                        </div>
-                        <div class="flex items-start">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-check text-blue-500 mt-1"></i>
-                            </div>
-                            <div class="ml-3">
-                                <div class="text-sm font-medium text-blue-900">Intenta con otro email</div>
-                                <div class="text-sm text-blue-700">Si tienes múltiples direcciones de email, prueba con otra</div>
+                                <div class="text-sm font-medium text-blue-900">Contacta al soporte</div>
+                                <div class="text-sm text-blue-700">Si crees que es un error o necesitas un nuevo enlace, contacta a nuestro equipo de soporte</div>
                             </div>
                         </div>
                     </div>
                 </div>
-                
-                <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <button onclick="history.back()" class="px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
-                        <i class="fas fa-arrow-left mr-2"></i>
-                        Volver atrás
-                    </button>
-                    <a href="mailto:soporte@conquerpass.com" class="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                        <i class="fas fa-envelope mr-2"></i>
-                        Contactar Soporte
-                    </a>
-                </div>
+
             </div>
         </div>
     </div>

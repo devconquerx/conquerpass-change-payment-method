@@ -83,229 +83,6 @@ class WordPressService:
             if 'connection' in locals():
                 connection.close()
     
-    def get_orders_by_email(self, email: str) -> Dict[str, Any]:
-        """
-        Obtiene todas las órdenes de WooCommerce para un email específico.
-        
-        Args:
-            email (str): Email del cliente
-            
-        Returns:
-            Dict con las órdenes encontradas o información de error
-        """
-        try:
-            connection = self._get_connection()
-            
-            with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-                query = """
-                    SELECT id, status, date_created_gmt, billing_email, total_amount
-                    FROM wp_wc_orders 
-                    WHERE billing_email = %s
-                    ORDER BY date_created_gmt DESC
-                """
-                
-                cursor.execute(query, (email,))
-                orders = cursor.fetchall()
-                
-                return {
-                    'success': True,
-                    'data': orders,
-                    'count': len(orders)
-                }
-                
-        except Exception as e:
-            logger.error(f"Error obteniendo órdenes para {email}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__
-            }
-        finally:
-            if 'connection' in locals():
-                connection.close()
-    
-    def get_orders_with_stripe_source_meta(self, email: str) -> Dict[str, Any]:
-        """
-        Obtiene órdenes de un usuario que ya tienen el meta _stripe_source_id.
-        
-        Args:
-            email (str): Email del cliente
-            
-        Returns:
-            Dict con las órdenes que tienen _stripe_source_id o información de error
-        """
-        try:
-            connection = self._get_connection()
-            
-            with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-                query = """
-                    SELECT o.id, o.status, o.date_created_gmt, o.billing_email, o.total_amount,
-                           om.meta_value as stripe_source_id
-                    FROM wp_wc_orders o
-                    INNER JOIN wp_wc_orders_meta om ON o.id = om.order_id
-                    WHERE o.billing_email = %s 
-                    AND om.meta_key = '_stripe_source_id'
-                    ORDER BY o.date_created_gmt DESC
-                """
-                
-                cursor.execute(query, (email,))
-                orders = cursor.fetchall()
-                
-                return {
-                    'success': True,
-                    'data': orders,
-                    'count': len(orders)
-                }
-                
-        except Exception as e:
-            logger.error(f"Error obteniendo órdenes con stripe_source_id para {email}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__
-            }
-        finally:
-            if 'connection' in locals():
-                connection.close()
-    
-    def update_stripe_source_id(self, email: str, new_payment_method_id: str) -> Dict[str, Any]:
-        """
-        Actualiza el meta _stripe_source_id para todas las órdenes de un usuario
-        que ya tengan ese metakey. NO inserta nuevas entradas.
-        
-        Args:
-            email (str): Email del cliente
-            new_payment_method_id (str): Nuevo ID del método de pago (ej: pm_1RVYDsCbn3uNw0MvST0cnmOB)
-            
-        Returns:
-            Dict con el resultado de la operación de actualización
-        """
-        try:
-            connection = self._get_connection()
-            
-            with connection.cursor() as cursor:
-                # Primero verificamos qué órdenes tienen el meta _stripe_source_id
-                check_query = """
-                    SELECT o.id, om.meta_value as current_stripe_source_id
-                    FROM wp_wc_orders o
-                    INNER JOIN wp_wc_orders_meta om ON o.id = om.order_id
-                    WHERE o.billing_email = %s 
-                    AND om.meta_key = '_stripe_source_id'
-                """
-                
-                cursor.execute(check_query, (email,))
-                orders_to_update = cursor.fetchall()
-                
-                if not orders_to_update:
-                    return {
-                        'success': True,
-                        'message': f'No se encontraron órdenes con _stripe_source_id para el email {email}',
-                        'updated_count': 0,
-                        'email': email
-                    }
-                
-                # Primero guardamos los valores actuales como _old_stripe_source_id
-                for order_id, current_value in orders_to_update:
-                    # Insertar o actualizar el meta _old_stripe_source_id
-                    old_meta_query = """
-                        INSERT INTO wp_wc_orders_meta (order_id, meta_key, meta_value)
-                        VALUES (%s, '_old_stripe_source_id', %s)
-                        ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)
-                    """
-                    cursor.execute(old_meta_query, (order_id, current_value))
-                
-                # Actualizamos el meta _stripe_source_id para estas órdenes
-                update_query = """
-                    UPDATE wp_wc_orders_meta om
-                    INNER JOIN wp_wc_orders o ON om.order_id = o.id
-                    SET om.meta_value = %s
-                    WHERE o.billing_email = %s 
-                    AND om.meta_key = '_stripe_source_id'
-                """
-                
-                cursor.execute(update_query, (new_payment_method_id, email))
-                updated_count = cursor.rowcount
-                
-                # Confirmar la transacción
-                connection.commit()
-                
-                logger.info(f"WordPress: Actualizadas {updated_count} órdenes para {email} con nuevo payment method {new_payment_method_id}")
-                
-                return {
-                    'success': True,
-                    'message': f'Se actualizaron {updated_count} órdenes exitosamente para {email}',
-                    'updated_count': updated_count,
-                    'new_payment_method_id': new_payment_method_id,
-                    'email': email,
-                    'orders_found': len(orders_to_update)
-                }
-                
-        except Exception as e:
-            logger.error(f"Error actualizando stripe_source_id para {email}: {str(e)}")
-            if 'connection' in locals():
-                connection.rollback()
-            return {
-                'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__,
-                'email': email
-            }
-        finally:
-            if 'connection' in locals():
-                connection.close()
-    
-    def get_order_meta(self, order_id: int, meta_key: str = None) -> Dict[str, Any]:
-        """
-        Obtiene metadatos de una orden específica.
-        
-        Args:
-            order_id (int): ID de la orden
-            meta_key (str, optional): Clave específica de meta. Si no se especifica, obtiene todos los metas.
-            
-        Returns:
-            Dict con los metadatos encontrados o información de error
-        """
-        try:
-            connection = self._get_connection()
-            
-            with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-                if meta_key:
-                    query = """
-                        SELECT order_id, meta_key, meta_value
-                        FROM wp_wc_orders_meta
-                        WHERE order_id = %s AND meta_key = %s
-                    """
-                    cursor.execute(query, (order_id, meta_key))
-                else:
-                    query = """
-                        SELECT order_id, meta_key, meta_value
-                        FROM wp_wc_orders_meta
-                        WHERE order_id = %s
-                        ORDER BY meta_key
-                    """
-                    cursor.execute(query, (order_id,))
-                
-                meta_data = cursor.fetchall()
-                
-                return {
-                    'success': True,
-                    'data': meta_data,
-                    'count': len(meta_data),
-                    'order_id': order_id
-                }
-                
-        except Exception as e:
-            logger.error(f"Error obteniendo meta para orden {order_id}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'error_type': type(e).__name__,
-                'order_id': order_id
-            }
-        finally:
-            if 'connection' in locals():
-                connection.close()
-    
     def update_order_meta(self, order_id: int, meta_key: str, meta_value: str) -> Dict[str, Any]:
         """
         Actualiza o inserta un metadato específico de una orden.
@@ -351,8 +128,6 @@ class WordPressService:
                 
                 connection.commit()
                 
-                logger.info(f"WordPress: {operation} meta {meta_key} para orden {order_id}")
-                
                 return {
                     'success': True,
                     'message': f'Meta {meta_key} {operation} exitosamente para orden {order_id}',
@@ -376,21 +151,172 @@ class WordPressService:
             if 'connection' in locals():
                 connection.close()
     
-    def get_customer_payment_methods(self, email: str) -> Dict[str, Any]:
+    def get_customer_orders_structured(self, email: str) -> Dict[str, Any]:
         """
-        Determina los métodos de pago que tiene un cliente basado en sus órdenes.
+        Obtiene las órdenes estructuradas de un cliente, priorizando la orden principal más reciente.
         
         Args:
             email (str): Email del cliente
             
         Returns:
-            Dict con información de los métodos de pago del cliente
+            Dict con las órdenes estructuradas y resumen
+        """
+        try:
+            # Obtener órdenes principales ordenadas por ID descendente (más reciente primero)
+            parent_orders = self._get_parent_orders_with_metadata(email)
+            
+            
+            if not parent_orders:
+                return {
+                    'success': True,
+                    'structured_orders': [],
+                    'summary': {
+                        'total_installments': 0,
+                        'parent_orders_count': 0,
+                        'payment_methods': {'stripe': False, 'dlocal': False}
+                    }
+                }
+            
+            structured_orders = []
+            total_installments = 0
+            payment_methods = {'stripe': False, 'dlocal': False}
+            
+            # Procesar cada orden principal (ya ordenadas por fecha DESC)
+            for parent_order in parent_orders:
+                # Obtener cuotas de esta orden principal
+                installments = self._get_installments_with_metadata(parent_order['id'])
+                
+                # Contar cuotas y detectar métodos de pago
+                total_installments += len(installments)
+                
+                for installment in installments:
+                    if installment.get('metadata_dict', {}).get('_stripe_customer_id'):
+                        payment_methods['stripe'] = True
+                    if installment.get('metadata_dict', {}).get('_dlocal_current_subscription_id'):
+                        payment_methods['dlocal'] = True
+                
+                structured_orders.append({
+                    'parent_order': parent_order,
+                    'installments': installments
+                })
+            
+            return {
+                'success': True,
+                'structured_orders': structured_orders,
+                'summary': {
+                    'total_installments': total_installments,
+                    'parent_orders_count': len(parent_orders),
+                    'payment_methods': payment_methods
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo órdenes estructuradas para {email}: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'structured_orders': [],
+                'summary': {
+                    'total_installments': 0,
+                    'parent_orders_count': 0,
+                    'payment_methods': {'stripe': False, 'dlocal': False}
+                }
+            }
+    
+    def get_customer_payment_methods(self, structured_orders: List[Dict]) -> Dict[str, Any]:
+        """
+        Determina el método de pago actual basado en la última cuota wc-processing.
+        
+        Args:
+            structured_orders: Lista de órdenes estructuradas (madre → cuotas)
+            
+        Returns:
+            Dict con información completa del método de pago del cliente
+        """
+        
+        # Buscar la última cuota con estado wc-processing y su orden madre asociada
+        latest_processing_installment = None
+        latest_date = None
+        parent_order_of_latest_installment = None
+        
+        for structured_order in structured_orders:
+            for installment in structured_order['installments']:
+                if installment['status'] == 'wc-processing':
+                    installment_date = installment['date_created_gmt']
+                    if not latest_date or installment_date > latest_date:
+                        latest_date = installment_date
+                        latest_processing_installment = installment
+                        parent_order_of_latest_installment = structured_order['parent_order']
+        
+        # Determinar método de pago y extraer metadatos relevantes
+        payment_method = 'unknown'
+        payment_details = {}
+        
+        if latest_processing_installment:
+            installment_metadata = latest_processing_installment['metadata_dict']
+            parent_metadata = parent_order_of_latest_installment['metadata_dict'] if parent_order_of_latest_installment else {}
+            order_payment_method = latest_processing_installment.get('payment_method', '')
+            
+            # PRIORIDAD 1: Usar el payment_method de la orden directamente
+            if order_payment_method == 'dlocal':
+                payment_method = 'dlocal'
+                
+                # Buscar metadatos dLocal primero en la cuota, luego en la orden madre
+                dlocal_plan_id = installment_metadata.get('_dlocal_current_plan_id') or parent_metadata.get('_dlocal_current_plan_id')
+                dlocal_subscription_id = installment_metadata.get('_dlocal_current_subscription_id') or parent_metadata.get('_dlocal_current_subscription_id')
+                
+                payment_details = {
+                    'current_plan_id': dlocal_plan_id,
+                    'current_subscription_id': dlocal_subscription_id
+                }
+                
+            elif order_payment_method == 'stripe':
+                payment_method = 'stripe'
+                payment_details = {
+                    'customer_id': installment_metadata.get('_stripe_customer_id'),
+                    'source_id': installment_metadata.get('_stripe_source_id')
+                }
+            # PRIORIDAD 2: Verificar por metadatos específicos (fallback)
+            elif installment_metadata.get('_stripe_customer_id') and installment_metadata.get('_stripe_source_id'):
+                payment_method = 'stripe'
+                payment_details = {
+                    'customer_id': installment_metadata.get('_stripe_customer_id'),
+                    'source_id': installment_metadata.get('_stripe_source_id')
+                }
+            elif (installment_metadata.get('_dlocal_current_subscription_id') and installment_metadata.get('_dlocal_current_plan_id')) or \
+                 (parent_metadata.get('_dlocal_current_subscription_id') and parent_metadata.get('_dlocal_current_plan_id')):
+                payment_method = 'dlocal'
+                
+                # Buscar metadatos dLocal primero en la cuota, luego en la orden madre
+                dlocal_plan_id = installment_metadata.get('_dlocal_current_plan_id') or parent_metadata.get('_dlocal_current_plan_id')
+                dlocal_subscription_id = installment_metadata.get('_dlocal_current_subscription_id') or parent_metadata.get('_dlocal_current_subscription_id')
+                
+                payment_details = {
+                    'current_plan_id': dlocal_plan_id,
+                    'current_subscription_id': dlocal_subscription_id
+                }
+        
+        return {
+            'payment_method': payment_method,
+            'payment_details': payment_details,
+            'latest_processing_installment': latest_processing_installment,
+            'has_active_payment': payment_method != 'unknown'
+        }
+
+    def _get_parent_orders_with_metadata(self, email: str) -> List[Dict[str, Any]]:
+        """
+        Obtiene todas las órdenes principales (asp_shop_plan) del usuario con todos sus metadatos.
+        
+        Args:
+            email (str): Email del cliente
+            
+        Returns:
+            Lista de órdenes principales con metadatos
         """
         try:
             connection = self._get_connection()
             
             with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-                # Obtener órdenes con información de método de pago
                 query = """
                     SELECT 
                         o.id,
@@ -398,137 +324,190 @@ class WordPressService:
                         o.date_created_gmt,
                         o.billing_email,
                         o.total_amount,
-                        o.payment_method as base_payment_method,
+                        o.payment_method,
                         o.payment_method_title,
+                        o.type,
                         GROUP_CONCAT(
-                            CASE 
-                                WHEN om.meta_key = '_stripe_source_id' THEN om.meta_value 
-                            END
-                        ) as stripe_source_id,
-                        GROUP_CONCAT(
-                            CASE 
-                                WHEN om.meta_key = '_stripe_customer_id' THEN om.meta_value 
-                            END
-                        ) as stripe_customer_id,
-                        GROUP_CONCAT(
-                            CASE 
-                                WHEN om.meta_key = '_dlocal_payment_id' THEN om.meta_value 
-                            END
-                        ) as dlocal_payment_id
+                            CONCAT(om.meta_key, ':', om.meta_value) 
+                            SEPARATOR '||'
+                        ) as metadata
                     FROM wp_wc_orders o
-                    LEFT JOIN wp_wc_orders_meta om ON o.id = om.order_id 
-                        AND om.meta_key IN ('_stripe_source_id', '_stripe_customer_id', '_dlocal_payment_id')
-                    WHERE o.billing_email = %s
-                    GROUP BY o.id, o.status, o.date_created_gmt, o.billing_email, o.total_amount, o.payment_method, o.payment_method_title
-                    ORDER BY o.date_created_gmt DESC
+                    LEFT JOIN wp_wc_orders_meta om ON o.id = om.order_id
+                    WHERE o.billing_email = %s AND o.type = 'asp_shop_plan'
+                    GROUP BY o.id, o.status, o.date_created_gmt, o.billing_email, o.total_amount, o.payment_method, o.payment_method_title, o.type
+                    ORDER BY o.id DESC, o.date_created_gmt DESC
                 """
                 
                 cursor.execute(query, (email,))
                 orders = cursor.fetchall()
                 
-                # Analizar métodos de pago
-                payment_methods = {
-                    'stripe': False,
-                    'dlocal': False,
-                    'other': False
-                }
-                
-                stripe_orders = []
-                dlocal_orders = []
-                other_orders = []
-                
+                # Procesar metadatos
                 for order in orders:
-                    payment_method = order.get('base_payment_method', '').lower()
-                    has_stripe_source = bool(order.get('stripe_source_id'))
-                    has_stripe_customer = bool(order.get('stripe_customer_id'))
-                    has_dlocal_payment = bool(order.get('dlocal_payment_id'))
+                    metadata_dict = {}
+                    if order['metadata']:
+                        for meta_item in order['metadata'].split('||'):
+                            if ':' in meta_item:
+                                key, value = meta_item.split(':', 1)
+                                metadata_dict[key] = value
+                    order['metadata_dict'] = metadata_dict
                     
-                    if payment_method == 'stripe' or has_stripe_source or has_stripe_customer:
-                        payment_methods['stripe'] = True
-                        stripe_orders.append(order)
-                    elif payment_method == 'dlocal' or has_dlocal_payment:
-                        payment_methods['dlocal'] = True
-                        dlocal_orders.append(order)
-                    else:
-                        payment_methods['other'] = True
-                        other_orders.append(order)
-                
-                # Determinar método de pago principal de forma inteligente
-                primary_payment_method = 'unknown'
-                if orders:
-                    # Primero intentar encontrar la orden más reciente con método de pago definido
-                    order_with_method = None
-                    for order in orders:
-                        payment_method = order.get('base_payment_method', '').strip()
-                        has_stripe_source = bool(order.get('stripe_source_id'))
-                        has_stripe_customer = bool(order.get('stripe_customer_id'))
-                        has_dlocal_payment = bool(order.get('dlocal_payment_id'))
-                        
-                        # Si la orden tiene método de pago definido o metadatos, usarla
-                        if payment_method or has_stripe_source or has_stripe_customer or has_dlocal_payment:
-                            order_with_method = order
-                            break
-                    
-                    # Si no encontramos ninguna con método definido, usar la más reciente
-                    if not order_with_method:
-                        order_with_method = orders[0]
-                    
-                    # Determinar el método basado en la orden seleccionada
-                    latest_payment_method = order_with_method.get('base_payment_method', '').lower().strip()
-                    has_stripe_source = bool(order_with_method.get('stripe_source_id'))
-                    has_stripe_customer = bool(order_with_method.get('stripe_customer_id'))
-                    has_dlocal_payment = bool(order_with_method.get('dlocal_payment_id'))
-                    
-                    if latest_payment_method == 'stripe' or has_stripe_source or has_stripe_customer:
-                        primary_payment_method = 'stripe'
-                    elif latest_payment_method == 'dlocal' or has_dlocal_payment:
-                        primary_payment_method = 'dlocal'
-                    elif latest_payment_method:
-                        primary_payment_method = latest_payment_method
-                    else:
-                        # Si aún no hay método definido, basarse en qué métodos tiene disponibles
-                        if payment_methods['dlocal']:
-                            primary_payment_method = 'dlocal'
-                        elif payment_methods['stripe']:
-                            primary_payment_method = 'stripe'
-                        else:
-                            primary_payment_method = 'other'
-                
-                return {
-                    'success': True,
-                    'email': email,
-                    'primary_payment_method': primary_payment_method,
-                    'payment_methods': payment_methods,
-                    'orders_count': {
-                        'total': len(orders),
-                        'stripe': len(stripe_orders),
-                        'dlocal': len(dlocal_orders),
-                        'other': len(other_orders)
-                    },
-                    'orders': {
-                        'all': orders,
-                        'stripe': stripe_orders,
-                        'dlocal': dlocal_orders,
-                        'other': other_orders
-                    },
-                    'latest_order': orders[0] if orders else None
-                }
+                return orders
                 
         except Exception as e:
-            logger.error(f"Error obteniendo métodos de pago para {email}: {str(e)}")
+            logger.error(f"Error obteniendo órdenes principales para {email}: {str(e)}")
+            return []
+        finally:
+            if 'connection' in locals():
+                connection.close()
+
+    def _get_installments_with_metadata(self, parent_order_id: int) -> List[Dict[str, Any]]:
+        """
+        Obtiene todas las cuotas (shop_order) de una orden principal con todos sus metadatos.
+        
+        Args:
+            parent_order_id (int): ID de la orden principal
+            
+        Returns:
+            Lista de cuotas ordenadas por _asp_upp_payment_number
+        """
+        try:
+            connection = self._get_connection()
+            
+            with connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                query = """
+                    SELECT 
+                        o.id,
+                        o.status,
+                        o.date_created_gmt,
+                        o.billing_email,
+                        o.total_amount,
+                        o.payment_method,
+                        o.payment_method_title,
+                        o.type,
+                        GROUP_CONCAT(
+                            CONCAT(om.meta_key, ':', om.meta_value) 
+                            SEPARATOR '||'
+                        ) as metadata
+                    FROM wp_wc_orders o
+                    LEFT JOIN wp_wc_orders_meta om ON o.id = om.order_id
+                    LEFT JOIN wp_wc_orders_meta om_parent ON o.id = om_parent.order_id 
+                        AND om_parent.meta_key = '_asp_upp_schedule_payment'
+                    WHERE o.type = 'shop_order' AND (
+                        om_parent.meta_value = %s OR 
+                        o.id = %s
+                    )
+                    GROUP BY o.id, o.status, o.date_created_gmt, o.billing_email, o.total_amount, o.payment_method, o.payment_method_title, o.type
+                    ORDER BY CAST(
+                        COALESCE(
+                            (SELECT meta_value FROM wp_wc_orders_meta WHERE order_id = o.id AND meta_key = '_asp_upp_payment_number'),
+                            '0'
+                        ) AS UNSIGNED
+                    ) ASC
+                """
+                
+                # La primera cuota siempre tiene ID = parent_order_id - 1
+                first_installment_id = parent_order_id - 1
+                cursor.execute(query, (parent_order_id, first_installment_id))
+                installments = cursor.fetchall()
+                
+                # Procesar metadatos
+                for installment in installments:
+                    metadata_dict = {}
+                    if installment['metadata']:
+                        for meta_item in installment['metadata'].split('||'):
+                            if ':' in meta_item:
+                                key, value = meta_item.split(':', 1)
+                                metadata_dict[key] = value
+                    installment['metadata_dict'] = metadata_dict
+                    installment['payment_number'] = int(metadata_dict.get('_asp_upp_payment_number', 0))
+                    
+                return installments
+                
+        except Exception as e:
+            logger.error(f"Error obteniendo cuotas para orden {parent_order_id}: {str(e)}")
+            return []
+        finally:
+            if 'connection' in locals():
+                connection.close()
+
+    def get_customer_orders_structured(self, email: str) -> Dict[str, Any]:
+        """
+        Método centralizado para obtener órdenes estructuradas: orden madre → cuotas.
+        
+        Args:
+            email (str): Email del cliente
+            
+        Returns:
+            Dict con órdenes estructuradas y resumen
+        """
+        try:
+            # Obtener órdenes principales
+            parent_orders = self._get_parent_orders_with_metadata(email)
+            
+            structured_orders = []
+            all_installments = []
+            payment_methods = {'stripe': False, 'dlocal': False, 'other': False}
+            
+            for parent_order in parent_orders:
+                # Obtener cuotas de esta orden principal
+                installments = self._get_installments_with_metadata(parent_order['id'])
+                
+                # Clasificar métodos de pago basado en metadatos
+                for installment in installments:
+                    all_installments.append(installment)
+                    metadata = installment['metadata_dict']
+                    
+                    # Detectar métodos de pago por metadatos
+                    has_stripe = any(key.startswith('_stripe_') for key in metadata.keys())
+                    has_dlocal = any(key.startswith('_dlocal_') for key in metadata.keys())
+                    
+                    if has_stripe:
+                        payment_methods['stripe'] = True
+                    elif has_dlocal:
+                        payment_methods['dlocal'] = True
+                    else:
+                        payment_methods['other'] = True
+                
+                structured_orders.append({
+                    'parent_order': parent_order,
+                    'installments': installments,
+                    'installments_count': len(installments)
+                })
+            
+            # Determinar método de pago principal
+            primary_payment_method = 'unknown'
+            if payment_methods['dlocal']:
+                primary_payment_method = 'dlocal'
+            elif payment_methods['stripe']:
+                primary_payment_method = 'stripe'
+            elif payment_methods['other']:
+                primary_payment_method = 'other'
+            
+            return {
+                'success': True,
+                'email': email,
+                'structured_orders': structured_orders,
+                'summary': {
+                    'parent_orders_count': len(parent_orders),
+                    'total_installments': len(all_installments),
+                    'payment_methods': payment_methods,
+                    'primary_payment_method': primary_payment_method
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo órdenes estructuradas para {email}: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
                 'error_type': type(e).__name__,
                 'email': email
             }
-        finally:
-            if 'connection' in locals():
-                connection.close()
+    
 
     def get_customer_orders_summary(self, email: str) -> Dict[str, Any]:
         """
-        Obtiene un resumen completo de las órdenes de un cliente.
+        Obtiene un resumen completo de las órdenes de un cliente usando el enfoque estructurado.
         
         Args:
             email (str): Email del cliente
@@ -537,34 +516,27 @@ class WordPressService:
             Dict con el resumen de órdenes del cliente
         """
         try:
-            # Obtener todas las órdenes
-            all_orders_result = self.get_orders_by_email(email)
-            if not all_orders_result['success']:
-                return all_orders_result
+            # Usar el nuevo método estructurado
+            structured_result = self.get_customer_orders_structured(email)
+            if not structured_result['success']:
+                return structured_result
             
-            # Obtener órdenes con stripe_source_id
-            stripe_orders_result = self.get_orders_with_stripe_source_meta(email)
-            if not stripe_orders_result['success']:
-                return stripe_orders_result
+            structured_orders = structured_result['structured_orders']
             
-            all_orders = all_orders_result['data']
-            stripe_orders = stripe_orders_result['data']
-            
-            # Calcular estadísticas
-            total_orders = len(all_orders)
-            orders_with_stripe = len(stripe_orders)
-            orders_without_stripe = total_orders - orders_with_stripe
+            # Obtener método de pago actual usando la nueva función pura
+            payment_info = self.get_customer_payment_methods(structured_orders)
             
             return {
                 'success': True,
                 'email': email,
+                'structured_data': structured_result,
+                'payment_info': payment_info,
                 'summary': {
-                    'total_orders': total_orders,
-                    'orders_with_stripe_source': orders_with_stripe,
-                    'orders_without_stripe_source': orders_without_stripe
-                },
-                'all_orders': all_orders,
-                'orders_with_stripe_source': stripe_orders
+                    'parent_orders': structured_result['summary']['parent_orders_count'],
+                    'total_installments': structured_result['summary']['total_installments'],
+                    'current_payment_method': payment_info['payment_method'],
+                    'has_active_payment': payment_info['has_active_payment']
+                }
             }
             
         except Exception as e:

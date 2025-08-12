@@ -90,59 +90,182 @@
             </div>
 
             {% if can_change_payment %}
-                <!-- Card principal - Formulario de cambio de método de pago -->
-                <div class="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-                    <div class="px-6 py-6">
+                {% if use_dlocal_flow %}
+                    <!-- Flujo para usuarios de dLocal -->
+                    <!-- Error message (solo se muestra si hay error) -->
+                    <div id="error-message" class="hidden rounded-md bg-red-50 border border-red-200 p-4 mb-6">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-exclamation-triangle text-red-400"></i>
+                            </div>
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium text-red-800">Error</h3>
+                                <div class="text-sm text-red-700 mt-1" id="error-text"></div>
+                            </div>
+                        </div>
+                    </div>
 
-                        <!-- Error message (solo se muestra si hay error) -->
-                        <div id="error-message" class="hidden rounded-md bg-red-50 border border-red-200 p-4 mb-6">
+                    <!-- Información de suscripciones dLocal -->
+                    {% if dlocal_subscription_details %}
+                        <div class="space-y-6">
+                            {% for subscription_detail in dlocal_subscription_details %}
+                                <div class="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+                                    <div class="px-6 py-4 border-b border-gray-200 bg-green-50">
+                                        <h3 class="text-lg font-medium text-gray-900">
+                                            <i class="fas fa-calendar-alt text-green-500 mr-2"></i>
+                                            {{ subscription_detail.plan.name }}
+                                        </h3>
+                                        <p class="text-sm text-gray-600 mt-1">{{ subscription_detail.plan.description }}</p>
+                                    </div>
+                                    
+                                    <div class="px-6 py-6">
+                                        <!-- Información de la suscripción -->
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Monto</div>
+                                                <div class="text-lg font-bold text-gray-900">
+                                                    {{ subscription_detail.plan.amount|floatformat:2 }} {{ subscription_detail.plan.currency }}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Frecuencia</div>
+                                                <div class="text-sm text-gray-700">
+                                                    {{ subscription_detail.plan.frequency_type|title }}
+                                                    {% if subscription_detail.plan.frequency_value > 1 %}
+                                                        (cada {{ subscription_detail.plan.frequency_value }})
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Información del próximo pago -->
+                                        {% if subscription_detail.next_payment.can_estimate %}
+                                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                                                <div class="flex items-start">
+                                                    <div class="flex-shrink-0">
+                                                        <i class="fas fa-calendar-check text-blue-500 mt-1"></i>
+                                                    </div>
+                                                    <div class="ml-3">
+                                                        <h4 class="text-sm font-medium text-blue-900">Próximo Pago</h4>
+                                                        <div class="text-sm text-blue-700 mt-1">
+                                                            <div class="font-medium">
+                                                                {{ subscription_detail.next_payment.amount|floatformat:2 }} {{ subscription_detail.next_payment.currency }}
+                                                            </div>
+                                                            {% if subscription_detail.next_payment.estimated_date %}
+                                                                <div class="mt-1">
+                                                                    Fecha estimada: {{ subscription_detail.next_payment.estimated_date|date:"d/m/Y H:i" }}
+                                                                </div>
+                                                            {% endif %}
+                                                            <div class="text-xs mt-1">{{ subscription_detail.next_payment.reason }}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+
+                                        <!-- Botón para cambiar método de pago -->
+                                        {% if subscription_detail.can_change_payment_method %}
+                                            <button 
+                                                type="button" 
+                                                onclick="initiatePaymentChange({{ subscription_detail.plan.id }}, {{ subscription_detail.subscription.id }})"
+                                                class="w-full flex justify-center items-center px-6 py-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                id="change-payment-btn-{{ subscription_detail.plan.id }}-{{ subscription_detail.subscription.id }}"
+                                            >
+                                                <i class="fas fa-credit-card mr-3"></i>
+                                                <span>Cambiar Método de Pago</span>
+                                            </button>
+                                        {% else %}
+                                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                                <div class="flex">
+                                                    <div class="flex-shrink-0">
+                                                        <i class="fas fa-info-circle text-yellow-400"></i>
+                                                    </div>
+                                                    <div class="ml-3">
+                                                        <div class="text-sm text-yellow-700">
+                                                            Esta suscripción no está activa o no permite cambios en este momento.
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <!-- No hay suscripciones activas -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
                             <div class="flex">
                                 <div class="flex-shrink-0">
-                                    <i class="fas fa-exclamation-triangle text-red-400"></i>
+                                    <i class="fas fa-info-circle text-yellow-400"></i>
                                 </div>
                                 <div class="ml-3">
-                                    <h3 class="text-sm font-medium text-red-800">Error</h3>
-                                    <div class="text-sm text-red-700 mt-1" id="error-text"></div>
+                                    <h3 class="text-sm font-medium text-yellow-800">
+                                        No se encontraron suscripciones activas
+                                    </h3>
+                                    <div class="mt-2 text-sm text-yellow-700">
+                                        <p>No se pudieron encontrar suscripciones activas asociadas a tu cuenta para cambiar el método de pago.</p>
+                                        <p class="mt-2">Si crees que esto es un error, por favor contacta con el soporte técnico.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                    {% endif %}
+                {% else %}
+                    <!-- Card principal - Formulario de cambio de método de pago para Stripe -->
+                    <div class="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+                        <div class="px-6 py-6">
 
-                        <!-- Formulario de método de pago -->
-                        <form id="payment-form">
-                            <div class="mb-6">
-                                <label class="block text-sm font-medium text-gray-700 mb-2">
-                                    <i class="fas fa-credit-card mr-2 text-gray-400"></i>
-                                    Información de la tarjeta
-                                </label>
-                                <div class="border border-gray-300 rounded-md p-4 bg-white focus-within:ring-1 focus-within:ring-black focus-within:border-black" style="min-height: 50px;">
-                                    <!-- Stripe Elements se montará aquí -->
-                                    <div id="card-element">
-                                        <!-- Stripe Elements creará los inputs aquí -->
+                            <!-- Error message (solo se muestra si hay error) -->
+                            <div id="error-message" class="hidden rounded-md bg-red-50 border border-red-200 p-4 mb-6">
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <i class="fas fa-exclamation-triangle text-red-400"></i>
                                     </div>
-                                </div>
-                                <div class="mt-2 text-sm text-gray-500 flex items-center">
-                                    <i class="fas fa-lock mr-2 text-green-500"></i>
-                                    Tu información de pago está segura y encriptada
+                                    <div class="ml-3">
+                                        <h3 class="text-sm font-medium text-red-800">Error</h3>
+                                        <div class="text-sm text-red-700 mt-1" id="error-text"></div>
+                                    </div>
                                 </div>
                             </div>
 
-                            <!-- Errores de validación de tarjeta -->
-                            <div id="card-errors" class="text-red-600 text-sm mb-4" role="alert"></div>
-
-                            <div class="mt-6">
-                                <button type="submit" id="submit-button" class="w-full flex justify-center items-center px-6 py-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                                    <i class="fas fa-plus-circle mr-3"></i>
-                                    <span id="button-text">Configurar Método de Pago</span>
-                                    <div id="spinner" class="hidden ml-3">
-                                        <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                            <!-- Formulario de método de pago -->
+                            <form id="payment-form">
+                                <div class="mb-6">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        <i class="fas fa-credit-card mr-2 text-gray-400"></i>
+                                        Información de la tarjeta
+                                    </label>
+                                    <div class="border border-gray-300 rounded-md p-4 bg-white focus-within:ring-1 focus-within:ring-black focus-within:border-black" style="min-height: 50px;">
+                                        <!-- Stripe Elements se montará aquí -->
+                                        <div id="card-element">
+                                            <!-- Stripe Elements creará los inputs aquí -->
+                                        </div>
                                     </div>
-                                </button>
-                            </div>
-                        </form>
+                                    <div class="mt-2 text-sm text-gray-500 flex items-center">
+                                        <i class="fas fa-lock mr-2 text-green-500"></i>
+                                        Tu información de pago está segura y encriptada
+                                    </div>
+                                </div>
+
+                                <!-- Errores de validación de tarjeta -->
+                                <div id="card-errors" class="text-red-600 text-sm mb-4" role="alert"></div>
+
+                                <div class="mt-6">
+                                    <button type="submit" id="submit-button" class="w-full flex justify-center items-center px-6 py-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <i class="fas fa-plus-circle mr-3"></i>
+                                        <span id="button-text">Configurar Método de Pago</span>
+                                        <div id="spinner" class="hidden ml-3">
+                                            <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
+                {% endif %}
             {% else %}
-                <!-- Mensaje para usuarios de dLocal -->
+                <!-- Mensaje para casos donde no se puede cambiar -->
                 <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
                     <div class="flex">
                         <div class="flex-shrink-0">
@@ -153,11 +276,8 @@
                                 No se puede cambiar el método de pago
                             </h3>
                             <div class="mt-2 text-sm text-yellow-700">
-                                <p>Tu cuenta utiliza dLocal como método de pago. En este momento no es posible cambiar a Stripe desde esta interfaz.</p>
-                                {% if dlocal_info %}
-                                    <p class="mt-2">{{ dlocal_info }}</p>
-                                {% endif %}
-                                <p class="mt-2">Si necesitas cambiar tu método de pago, por favor contacta con el soporte técnico.</p>
+                                <p>No se pudo determinar cómo proceder con el cambio de método de pago para tu cuenta.</p>
+                                <p class="mt-2">Por favor contacta con el soporte técnico para recibir asistencia.</p>
                             </div>
                         </div>
                     </div>
@@ -238,6 +358,59 @@
 
 {% block scripts %}
 {% if can_change_payment %}
+{% if use_dlocal_flow %}
+<script>
+    // JavaScript para el flujo de dLocal
+    function initiatePaymentChange(planId, subscriptionId) {
+        const button = document.getElementById(`change-payment-btn-${planId}-${subscriptionId}`);
+        const originalText = button.innerHTML;
+        
+        // Mostrar loading
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-3"></i><span>Procesando...</span>';
+        
+        // Hacer petición para iniciar el cambio
+        fetch('{% url "payment_method:iniciar_cambio_dlocal" encrypted_email=encrypted_email %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                plan_id: planId,
+                subscription_id: subscriptionId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Redirigir a la URL de checkout de dLocal
+                window.location.href = data.checkout_url;
+            } else {
+                showError(data.error);
+                button.disabled = false;
+                button.innerHTML = originalText;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('No se pudo conectar con el servidor. Por favor, intenta nuevamente.');
+            button.disabled = false;
+            button.innerHTML = originalText;
+        });
+    }
+    
+    function showError(message) {
+        const errorDiv = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        
+        errorText.textContent = message;
+        errorDiv.classList.remove('hidden');
+        
+        // Scroll al error
+        errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+</script>
+{% else %}
 <script src="https://js.stripe.com/v3/"></script>
 <script>
     // Configuración de Stripe
@@ -389,5 +562,6 @@
         successDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 </script>
+{% endif %}
 {% endif %}
 {% endblock %}

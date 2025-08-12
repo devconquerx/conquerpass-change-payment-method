@@ -5,9 +5,13 @@ from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import json
+import logging
 from .services import StripeService
 from services.wordpress_service import WordPressService
+from services.dlocal_service import DLocalService
 from apps.core.utils import decrypt_email
+
+logger = logging.getLogger(__name__)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -20,45 +24,51 @@ class ChangePaymentMethodView(View):
         try:
             customer_email = decrypt_email(encrypted_email)
         except Exception:
+            logging.info('NO SE ENCONTRO LA ORDEN')
             return render(request, 'payment_method/customer_not_found.html', {
                 'customer_email': 'Email inválido',
                 'error_details': 'El enlace proporcionado no es válido.'
             }, status=400)
         
-        # Primero consultar WordPress para obtener información del método de pago actual
+        # Primero consultar WordPress para obtener órdenes estructuradas
         wp_service = WordPressService()
-        payment_methods_result = wp_service.get_customer_payment_methods(customer_email)
+        structured_result = wp_service.get_customer_orders_structured(customer_email)
         
-        if not payment_methods_result['success']:
+        if not structured_result['success']:
             return render(request, 'payment_method/error.html', {
                 'customer_email': customer_email,
                 'error_title': 'Error consultando información',
                 'error_message': 'No pudimos consultar tu información de órdenes. Por favor, verifica que el email sea correcto.',
-                'error_details': payment_methods_result['error']
+                'error_details': structured_result['error']
             }, status=500)
         
-        # Obtener información del método de pago
-        primary_payment_method = payment_methods_result['primary_payment_method']
-        payment_methods_info = payment_methods_result['payment_methods']
-        latest_order = payment_methods_result['latest_order']
-        orders_count = payment_methods_result['orders_count']
+        # Obtener información del método de pago usando la nueva API
+        payment_info = wp_service.get_customer_payment_methods(structured_result['structured_orders'])
+        
         
         # Si no tiene órdenes, mostrar error
-        if orders_count['total'] == 0:
+        if structured_result['summary']['total_installments'] == 0:
             return render(request, 'payment_method/customer_not_found.html', {
                 'customer_email': customer_email,
                 'error_details': 'No se encontraron órdenes asociadas a este email.'
             }, status=404)
         
+        
+
         # Preparar información para mostrar el método de pago actual
+        latest_installment = payment_info.get('latest_processing_installment')
         current_payment_info = {
-            'method': primary_payment_method,
-            'display_name': self._get_payment_method_display_name(primary_payment_method),
-            'latest_order_id': latest_order['id'] if latest_order else None,
-            'latest_order_date': latest_order['date_created_gmt'] if latest_order else None,
-            'has_stripe': payment_methods_info['stripe'],
-            'has_dlocal': payment_methods_info['dlocal'],
-            'orders_count': orders_count
+            'method': payment_info['payment_method'],
+            'display_name': self._get_payment_method_display_name(payment_info['payment_method']),
+            'latest_order_id': latest_installment['id'] if latest_installment else None,
+            'latest_order_date': latest_installment['date_created_gmt'] if latest_installment else None,
+            'has_stripe': structured_result['summary']['payment_methods']['stripe'],
+            'has_dlocal': structured_result['summary']['payment_methods']['dlocal'],
+            'orders_count': {
+                'total': structured_result['summary']['total_installments'],
+                'parent_orders': structured_result['summary']['parent_orders_count']
+            },
+            'payment_details': payment_info['payment_details']
         }
         
         # Preparar contexto base
@@ -66,11 +76,11 @@ class ChangePaymentMethodView(View):
             'customer_email': customer_email,
             'encrypted_email': encrypted_email,
             'current_payment_info': current_payment_info,
-            'primary_payment_method': primary_payment_method
+            'primary_payment_method': payment_info['payment_method']
         }
         
-        # Solo proceder con Stripe si el usuario actualmente usa Stripe o no tiene método definido
-        if primary_payment_method in ['stripe', 'unknown', 'other']:
+        # Solo proceder con Stripe si el usuario actualmente usa Stripe
+        if payment_info['payment_method'] == 'stripe':
             stripe_service = StripeService()
             
             # Buscar cliente en Stripe
@@ -101,11 +111,29 @@ class ChangePaymentMethodView(View):
                 'can_change_payment': True
             })
         else:
-            # Usuario usa dLocal, mostrar solo información
+            # Usuario usa dLocal o método no identificado como Stripe
+            dlocal_details = payment_info['payment_details']
             context.update({
-                'can_change_payment': False,
-                'dlocal_info': 'Este usuario utiliza dLocal como método de pago.'
+                'can_change_payment': True,  # Puede cambiar con el nuevo flujo
+                'dlocal_info': f'Este usuario utiliza {payment_info["payment_method"]} como método de pago.',
+                'use_dlocal_flow': True  # Flag para indicar que use el flujo de dLocal
             })
+            
+            # Si tiene los metadatos de suscripción dLocal, obtener detalles
+            if dlocal_details.get('current_plan_id') and dlocal_details.get('current_subscription_id'):
+                dlocal_service = DLocalService()
+                
+                plan_id = dlocal_details['current_plan_id']
+                subscription_id = dlocal_details['current_subscription_id']
+                
+                details_result = dlocal_service.get_subscription_details(plan_id, subscription_id)
+                
+                if details_result['success']:
+                    context['dlocal_subscription_details'] = [details_result['data']]
+                else:
+                    context['dlocal_subscription_details'] = []
+            else:
+                context['dlocal_subscription_details'] = []
         
         return render(request, 'payment_method/change_payment_method.html', context)
     
@@ -166,18 +194,29 @@ class ChangePaymentMethodView(View):
                     if not default_result['success']:
                         print(f"Warning: No se pudo establecer como predeterminado: {default_result['error']}")
                 
-                # Actualizar órdenes de WordPress con el nuevo método de pago
+                # Obtener la última cuota activa y actualizar sus metadatos
                 wp_service = WordPressService()
-                wp_update_result = wp_service.update_stripe_source_id(
-                    email=customer_email,
-                    new_payment_method_id=intent.payment_method
-                )
+                structured_result = wp_service.get_customer_orders_structured(customer_email)
                 
-                # Log del resultado pero no fallar si hay error en WordPress
-                if wp_update_result['success']:
-                    print(f"WordPress: {wp_update_result['message']}")
-                else:
-                    print(f"Warning WordPress: {wp_update_result['error']}")
+                if structured_result['success']:
+                    payment_info = wp_service.get_customer_payment_methods(structured_result['structured_orders'])
+                    latest_installment = payment_info.get('latest_processing_installment')
+                    
+                    if latest_installment:
+                        # Actualizar _stripe_source_id
+                        update_result = wp_service.update_order_meta(
+                            order_id=latest_installment['id'],
+                            meta_key='_stripe_source_id',
+                            meta_value=intent.payment_method
+                        )
+                        
+                        # Log del resultado pero no fallar si hay error en WordPress
+                        if update_result['success']:
+                            print(f"WordPress: {update_result['message']}")
+                        else:
+                            print(f"Warning WordPress: {update_result['error']}")
+                    else:
+                        print("Warning: No se encontró cuota activa para actualizar")
             
             return JsonResponse({
                 'success': True,
@@ -194,4 +233,122 @@ class ChangePaymentMethodView(View):
             return JsonResponse({
                 'success': False,
                 'error': 'Ha ocurrido un error inesperado. Por favor, intenta nuevamente o contacta soporte si el problema persiste.'
+            }, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class InitiateDLocalPaymentChangeView(View):
+    """
+    Vista para iniciar el proceso de cambio de método de pago para usuarios de dLocal.
+    Crea un plan con la misma configuración y redirige al checkout.
+    """
+    
+    def post(self, request, encrypted_email):
+        """
+        Inicia el proceso de cambio de método de pago para dLocal.
+        """
+        try:
+            customer_email = decrypt_email(encrypted_email)
+        except Exception:
+            return JsonResponse({
+                'success': False,
+                'error': 'El enlace proporcionado no es válido.'
+            }, status=400)
+        
+        try:
+            data = json.loads(request.body)
+            plan_id = data.get('plan_id')
+            subscription_id = data.get('subscription_id')
+            
+            if not plan_id or not subscription_id:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Información de suscripción incompleta.'
+                }, status=400)
+            
+            # Obtener detalles de la suscripción actual
+            dlocal_service = DLocalService()
+            subscription_details = dlocal_service.get_subscription_details(plan_id, subscription_id)
+            
+            if not subscription_details['success']:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No se pudo obtener información de la suscripción actual.',
+                    'details': subscription_details['error']
+                }, status=500)
+            
+            subscription_data = subscription_details['data']
+            plan = subscription_data['plan']
+            next_payment = subscription_data.get('next_payment', {})
+            
+            if not next_payment.get('can_estimate'):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No se puede determinar la próxima fecha de pago. Contacta soporte para asistencia.'
+                }, status=400)
+            
+            # Crear un nuevo plan con la misma configuración
+            new_plan_data = {
+                'name': f"{plan['name']} - Cambio de Método de Pago",
+                'description': f"Plan para cambio de método de pago - Original: {plan['description']}",
+                'country': plan.get('country'),
+                'currency': plan['currency'],
+                'amount': next_payment['amount'],
+                'frequency_type': plan['frequency_type'],
+                'frequency_value': plan.get('frequency_value', 1),
+                'success_url': f"{request.build_absolute_uri('/').rstrip('/')}/payment-method/change/{encrypted_email}/success/",
+                'back_url': f"{request.build_absolute_uri('/').rstrip('/')}/payment-method/change/{encrypted_email}/",
+                'error_url': f"{request.build_absolute_uri('/').rstrip('/')}/payment-method/change/{encrypted_email}/error/",
+                'notification_url': f"{request.build_absolute_uri('/').rstrip('/')}/payment-method/dlocal-webhook/"
+            }
+            
+            # Remover campos opcionales si están vacíos
+            if not new_plan_data['country']:
+                del new_plan_data['country']
+            
+            create_plan_result = dlocal_service.create_plan(new_plan_data)
+            
+            if not create_plan_result['success']:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No se pudo crear el plan para el cambio de método de pago.',
+                    'details': create_plan_result['error']
+                }, status=500)
+            
+            new_plan = create_plan_result['data']
+            checkout_url = new_plan.get('subscribe_url')
+            
+            if not checkout_url:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No se pudo generar la URL de pago.'
+                }, status=500)
+            
+            # Guardar información del proceso en la sesión o base de datos si es necesario
+            # Por simplicidad, se incluye en la respuesta
+            
+            return JsonResponse({
+                'success': True,
+                'checkout_url': checkout_url,
+                'new_plan_id': new_plan['id'],
+                'new_plan_token': new_plan['plan_token'],
+                'original_plan_id': plan_id,
+                'original_subscription_id': subscription_id,
+                'next_payment_info': {
+                    'amount': next_payment['amount'],
+                    'currency': next_payment['currency'],
+                    'estimated_date': next_payment.get('estimated_date')
+                }
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Los datos enviados no son válidos.'
+            }, status=400)
+        except Exception as e:
+            logger.error(f"Error iniciando cambio de método de pago dLocal para {customer_email}: {str(e)}")
+            return JsonResponse({
+                'success': False,
+                'error': 'Ha ocurrido un error inesperado. Por favor, intenta nuevamente.'
             }, status=500)
