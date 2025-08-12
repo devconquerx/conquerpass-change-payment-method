@@ -98,7 +98,7 @@ class WordPressService:
             
             with connection.cursor(pymysql.cursors.DictCursor) as cursor:
                 query = """
-                    SELECT id, status, date_created_gmt, billing_email, total
+                    SELECT id, status, date_created_gmt, billing_email, total_amount
                     FROM wp_wc_orders 
                     WHERE billing_email = %s
                     ORDER BY date_created_gmt DESC
@@ -139,7 +139,7 @@ class WordPressService:
             
             with connection.cursor(pymysql.cursors.DictCursor) as cursor:
                 query = """
-                    SELECT o.id, o.status, o.date_created_gmt, o.billing_email, o.total,
+                    SELECT o.id, o.status, o.date_created_gmt, o.billing_email, o.total_amount,
                            om.meta_value as stripe_source_id
                     FROM wp_wc_orders o
                     INNER JOIN wp_wc_orders_meta om ON o.id = om.order_id
@@ -376,6 +376,156 @@ class WordPressService:
             if 'connection' in locals():
                 connection.close()
     
+    def get_customer_payment_methods(self, email: str) -> Dict[str, Any]:
+        """
+        Determina los métodos de pago que tiene un cliente basado en sus órdenes.
+        
+        Args:
+            email (str): Email del cliente
+            
+        Returns:
+            Dict con información de los métodos de pago del cliente
+        """
+        try:
+            connection = self._get_connection()
+            
+            with connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                # Obtener órdenes con información de método de pago
+                query = """
+                    SELECT 
+                        o.id,
+                        o.status,
+                        o.date_created_gmt,
+                        o.billing_email,
+                        o.total_amount,
+                        o.payment_method as base_payment_method,
+                        o.payment_method_title,
+                        GROUP_CONCAT(
+                            CASE 
+                                WHEN om.meta_key = '_stripe_source_id' THEN om.meta_value 
+                            END
+                        ) as stripe_source_id,
+                        GROUP_CONCAT(
+                            CASE 
+                                WHEN om.meta_key = '_stripe_customer_id' THEN om.meta_value 
+                            END
+                        ) as stripe_customer_id,
+                        GROUP_CONCAT(
+                            CASE 
+                                WHEN om.meta_key = '_dlocal_payment_id' THEN om.meta_value 
+                            END
+                        ) as dlocal_payment_id
+                    FROM wp_wc_orders o
+                    LEFT JOIN wp_wc_orders_meta om ON o.id = om.order_id 
+                        AND om.meta_key IN ('_stripe_source_id', '_stripe_customer_id', '_dlocal_payment_id')
+                    WHERE o.billing_email = %s
+                    GROUP BY o.id, o.status, o.date_created_gmt, o.billing_email, o.total_amount, o.payment_method, o.payment_method_title
+                    ORDER BY o.date_created_gmt DESC
+                """
+                
+                cursor.execute(query, (email,))
+                orders = cursor.fetchall()
+                
+                # Analizar métodos de pago
+                payment_methods = {
+                    'stripe': False,
+                    'dlocal': False,
+                    'other': False
+                }
+                
+                stripe_orders = []
+                dlocal_orders = []
+                other_orders = []
+                
+                for order in orders:
+                    payment_method = order.get('base_payment_method', '').lower()
+                    has_stripe_source = bool(order.get('stripe_source_id'))
+                    has_stripe_customer = bool(order.get('stripe_customer_id'))
+                    has_dlocal_payment = bool(order.get('dlocal_payment_id'))
+                    
+                    if payment_method == 'stripe' or has_stripe_source or has_stripe_customer:
+                        payment_methods['stripe'] = True
+                        stripe_orders.append(order)
+                    elif payment_method == 'dlocal' or has_dlocal_payment:
+                        payment_methods['dlocal'] = True
+                        dlocal_orders.append(order)
+                    else:
+                        payment_methods['other'] = True
+                        other_orders.append(order)
+                
+                # Determinar método de pago principal de forma inteligente
+                primary_payment_method = 'unknown'
+                if orders:
+                    # Primero intentar encontrar la orden más reciente con método de pago definido
+                    order_with_method = None
+                    for order in orders:
+                        payment_method = order.get('base_payment_method', '').strip()
+                        has_stripe_source = bool(order.get('stripe_source_id'))
+                        has_stripe_customer = bool(order.get('stripe_customer_id'))
+                        has_dlocal_payment = bool(order.get('dlocal_payment_id'))
+                        
+                        # Si la orden tiene método de pago definido o metadatos, usarla
+                        if payment_method or has_stripe_source or has_stripe_customer or has_dlocal_payment:
+                            order_with_method = order
+                            break
+                    
+                    # Si no encontramos ninguna con método definido, usar la más reciente
+                    if not order_with_method:
+                        order_with_method = orders[0]
+                    
+                    # Determinar el método basado en la orden seleccionada
+                    latest_payment_method = order_with_method.get('base_payment_method', '').lower().strip()
+                    has_stripe_source = bool(order_with_method.get('stripe_source_id'))
+                    has_stripe_customer = bool(order_with_method.get('stripe_customer_id'))
+                    has_dlocal_payment = bool(order_with_method.get('dlocal_payment_id'))
+                    
+                    if latest_payment_method == 'stripe' or has_stripe_source or has_stripe_customer:
+                        primary_payment_method = 'stripe'
+                    elif latest_payment_method == 'dlocal' or has_dlocal_payment:
+                        primary_payment_method = 'dlocal'
+                    elif latest_payment_method:
+                        primary_payment_method = latest_payment_method
+                    else:
+                        # Si aún no hay método definido, basarse en qué métodos tiene disponibles
+                        if payment_methods['dlocal']:
+                            primary_payment_method = 'dlocal'
+                        elif payment_methods['stripe']:
+                            primary_payment_method = 'stripe'
+                        else:
+                            primary_payment_method = 'other'
+                
+                return {
+                    'success': True,
+                    'email': email,
+                    'primary_payment_method': primary_payment_method,
+                    'payment_methods': payment_methods,
+                    'orders_count': {
+                        'total': len(orders),
+                        'stripe': len(stripe_orders),
+                        'dlocal': len(dlocal_orders),
+                        'other': len(other_orders)
+                    },
+                    'orders': {
+                        'all': orders,
+                        'stripe': stripe_orders,
+                        'dlocal': dlocal_orders,
+                        'other': other_orders
+                    },
+                    'latest_order': orders[0] if orders else None
+                }
+                
+        except Exception as e:
+            logger.error(f"Error obteniendo métodos de pago para {email}: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'email': email
+            }
+        finally:
+            if 'connection' in locals():
+                connection.close()
+
     def get_customer_orders_summary(self, email: str) -> Dict[str, Any]:
         """
         Obtiene un resumen completo de las órdenes de un cliente.

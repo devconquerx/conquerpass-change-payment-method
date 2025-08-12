@@ -21,7 +21,7 @@ class Command(BaseCommand):
                 self.style.SUCCESS(f'Email encriptado: {encrypted}')
             )
             self.stdout.write(
-                self.style.WARNING(f'URL: /{encrypted}/cambiar-metodo-pago/')
+                self.style.WARNING(f'URL: http://127.0.0.1:8000/metodo-pago/{encrypted}/cambiar-metodo-pago/')
             )
         except Exception as e:
             self.stdout.write(

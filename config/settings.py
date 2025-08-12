@@ -96,13 +96,8 @@ if db_host.startswith('/') or db_host.endswith('.sock'):
 
 DATABASES = {
     'default': {
-        'ENGINE': config('DB_ENGINE'),
-        'NAME': config('DB_NAME') if config('DB_ENGINE') != 'django.db.backends.sqlite3' else BASE_DIR / config('DB_NAME'),
-        'USER': config('DB_USER', default=''),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': db_host,
-        'PORT': config('DB_PORT', default=''),
-        'OPTIONS': db_options,
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
     }
 }
 
