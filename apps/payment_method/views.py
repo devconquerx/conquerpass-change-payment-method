@@ -194,29 +194,20 @@ class ChangePaymentMethodView(View):
                     if not default_result['success']:
                         print(f"Warning: No se pudo establecer como predeterminado: {default_result['error']}")
                 
-                # Obtener la última cuota activa y actualizar sus metadatos
+                # Actualizar _stripe_source_id para todas las cuotas que ya lo tengan
                 wp_service = WordPressService()
-                structured_result = wp_service.get_customer_orders_structured(customer_email)
+                update_result = wp_service.update_stripe_source_id_for_customer(
+                    email=customer_email,
+                    new_payment_method_id=intent.payment_method
+                )
                 
-                if structured_result['success']:
-                    payment_info = wp_service.get_customer_payment_methods(structured_result['structured_orders'])
-                    latest_installment = payment_info.get('latest_processing_installment')
-                    
-                    if latest_installment:
-                        # Actualizar _stripe_source_id
-                        update_result = wp_service.update_order_meta(
-                            order_id=latest_installment['id'],
-                            meta_key='_stripe_source_id',
-                            meta_value=intent.payment_method
-                        )
-                        
-                        # Log del resultado pero no fallar si hay error en WordPress
-                        if update_result['success']:
-                            print(f"WordPress: {update_result['message']}")
-                        else:
-                            print(f"Warning WordPress: {update_result['error']}")
-                    else:
-                        print("Warning: No se encontró cuota activa para actualizar")
+                # Log del resultado pero no fallar si hay error en WordPress
+                if update_result['success']:
+                    updated_count = update_result['summary']['updated_count']
+                    skipped_count = update_result['summary']['skipped_count']
+                    print(f"WordPress: Actualizadas {updated_count} cuotas, omitidas {skipped_count}")
+                else:
+                    print(f"Warning WordPress: {update_result['error']}")
             
             return JsonResponse({
                 'success': True,

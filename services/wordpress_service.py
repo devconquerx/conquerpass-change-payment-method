@@ -342,14 +342,23 @@ class WordPressService:
                 cursor.execute(query, (email,))
                 orders = cursor.fetchall()
                 
-                # Procesar metadatos
+                # Procesar metadatos - consultando por separado para evitar truncamiento de GROUP_CONCAT
                 for order in orders:
+                    order_id = order['id']
+                    
+                    # Consulta separada para metadatos de esta orden específica
+                    metadata_query = """
+                        SELECT meta_key, meta_value 
+                        FROM wp_wc_orders_meta 
+                        WHERE order_id = %s
+                    """
+                    cursor.execute(metadata_query, (order_id,))
+                    metadata_rows = cursor.fetchall()
+                    
                     metadata_dict = {}
-                    if order['metadata']:
-                        for meta_item in order['metadata'].split('||'):
-                            if ':' in meta_item:
-                                key, value = meta_item.split(':', 1)
-                                metadata_dict[key] = value
+                    for row in metadata_rows:
+                        metadata_dict[row['meta_key']] = row['meta_value']
+                    
                     order['metadata_dict'] = metadata_dict
                     
                 return orders
@@ -411,14 +420,23 @@ class WordPressService:
                 cursor.execute(query, (parent_order_id, first_installment_id))
                 installments = cursor.fetchall()
                 
-                # Procesar metadatos
+                # Procesar metadatos - consultando por separado para evitar truncamiento de GROUP_CONCAT
                 for installment in installments:
+                    order_id = installment['id']
+                    
+                    # Consulta separada para metadatos de esta orden específica
+                    metadata_query = """
+                        SELECT meta_key, meta_value 
+                        FROM wp_wc_orders_meta 
+                        WHERE order_id = %s
+                    """
+                    cursor.execute(metadata_query, (order_id,))
+                    metadata_rows = cursor.fetchall()
+                    
                     metadata_dict = {}
-                    if installment['metadata']:
-                        for meta_item in installment['metadata'].split('||'):
-                            if ':' in meta_item:
-                                key, value = meta_item.split(':', 1)
-                                metadata_dict[key] = value
+                    for row in metadata_rows:
+                        metadata_dict[row['meta_key']] = row['meta_value']
+                    
                     installment['metadata_dict'] = metadata_dict
                     installment['payment_number'] = int(metadata_dict.get('_asp_upp_payment_number', 0))
                     
@@ -542,6 +560,130 @@ class WordPressService:
             
         except Exception as e:
             logger.error(f"Error obteniendo resumen para {email}: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'email': email
+            }
+    
+    def update_stripe_source_id_for_customer(self, email: str, new_payment_method_id: str) -> Dict[str, Any]:
+        """
+        Actualiza el _stripe_source_id solo para las cuotas que ya lo tengan.
+        No inserta el metadato si no existe, solo actualiza los existentes.
+        
+        Args:
+            email (str): Email del cliente
+            new_payment_method_id (str): Nuevo payment method ID de Stripe
+            
+        Returns:
+            Dict con el resultado de la operación
+        """
+        try:
+            # Obtener órdenes estructuradas del cliente
+            structured_result = self.get_customer_orders_structured(email)
+            if not structured_result['success']:
+                return {
+                    'success': False,
+                    'error': 'No se pudieron obtener las órdenes del cliente',
+                    'details': structured_result.get('error', 'Error desconocido')
+                }
+            
+            updated_orders = []
+            skipped_orders = []
+            
+            # Recorrer todas las órdenes estructuradas
+            for order_group in structured_result['structured_orders']:
+                parent_order = order_group['parent_order']
+                installments = order_group['installments']
+                
+                # PRIMERO: Procesar la orden padre
+                parent_order_id = parent_order['id']
+                parent_metadata = parent_order.get('metadata_dict', {})
+                
+                # Actualizar la orden padre solo si ya tiene _stripe_source_id
+                if '_stripe_source_id' in parent_metadata:
+                    current_source_id = parent_metadata.get('_stripe_source_id')
+                    
+                    update_result = self.update_order_meta(
+                        order_id=parent_order_id,
+                        meta_key='_stripe_source_id',
+                        meta_value=new_payment_method_id
+                    )
+                    
+                    if update_result['success']:
+                        updated_orders.append({
+                            'order_id': parent_order_id,
+                            'order_type': 'parent',
+                            'old_source_id': current_source_id,
+                            'new_source_id': new_payment_method_id
+                        })
+                    else:
+                        skipped_orders.append({
+                            'order_id': parent_order_id,
+                            'order_type': 'parent',
+                            'reason': f"Error actualizando: {update_result.get('error', 'Error desconocido')}"
+                        })
+                else:
+                    skipped_orders.append({
+                        'order_id': parent_order_id,
+                        'order_type': 'parent',
+                        'reason': 'No tiene _stripe_source_id existente'
+                    })
+                
+                # SEGUNDO: Procesar cuotas (installments) - ordenadas por ID ascendente para empezar desde la primera
+                sorted_installments = sorted(installments, key=lambda x: x['id'])
+                
+                for installment in sorted_installments:
+                    order_id = installment['id']
+                    metadata = installment.get('metadata_dict', {})
+                    
+                    # Solo actualizar si ya tiene _stripe_source_id
+                    if '_stripe_source_id' in metadata:
+                        current_source_id = metadata.get('_stripe_source_id')
+                        
+                        update_result = self.update_order_meta(
+                            order_id=order_id,
+                            meta_key='_stripe_source_id',
+                            meta_value=new_payment_method_id
+                        )
+                        
+                        if update_result['success']:
+                            updated_orders.append({
+                                'order_id': order_id,
+                                'order_type': 'installment',
+                                'old_source_id': current_source_id,
+                                'new_source_id': new_payment_method_id
+                            })
+                        else:
+                            skipped_orders.append({
+                                'order_id': order_id,
+                                'order_type': 'installment',
+                                'reason': f"Error actualizando: {update_result.get('error', 'Error desconocido')}"
+                            })
+                    else:
+                        skipped_orders.append({
+                            'order_id': order_id,
+                            'order_type': 'installment',
+                            'reason': 'No tiene _stripe_source_id existente'
+                        })
+            
+            return {
+                'success': True,
+                'message': f'Actualización completada para {email}',
+                'summary': {
+                    'updated_count': len(updated_orders),
+                    'skipped_count': len(skipped_orders),
+                    'total_orders_processed': len(updated_orders) + len(skipped_orders)
+                },
+                'updated_orders': updated_orders,
+                'skipped_orders': skipped_orders,
+                'email': email,
+                'new_payment_method_id': new_payment_method_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Error actualizando _stripe_source_id para {email}: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
