@@ -37,54 +37,28 @@
 
             <!-- Información del método de pago actual -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-6">
-                <div class="px-6 py-4 border-b border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
                         <i class="fas fa-credit-card text-gray-400 mr-2"></i>
                         Método de Pago Actual
                     </h3>
-                </div>
-                <div class="px-6 py-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="text-sm font-medium text-gray-900">
-                                {{ current_payment_info.display_name }}
-                            </div>
-                            {% if current_payment_info.latest_order_id %}
-                                <div class="text-sm text-gray-500">
-                                    Última orden: #{{ current_payment_info.latest_order_id }}
-                                    {% if current_payment_info.latest_order_date %}
-                                        - {{ current_payment_info.latest_order_date|date:"d/m/Y" }}
-                                    {% endif %}
-                                </div>
-                            {% endif %}
-                            <div class="text-sm text-gray-500 mt-1">
-                                Total de órdenes: {{ current_payment_info.orders_count.total }}
-                                {% if current_payment_info.orders_count.stripe > 0 %}
-                                    | Stripe: {{ current_payment_info.orders_count.stripe }}
-                                {% endif %}
-                                {% if current_payment_info.orders_count.dlocal > 0 %}
-                                    | dLocal: {{ current_payment_info.orders_count.dlocal }}
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="flex-shrink-0">
-                            {% if primary_payment_method == 'stripe' %}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                    <i class="fas fa-credit-card mr-1"></i>
-                                    Stripe
-                                </span>
-                            {% elif primary_payment_method == 'dlocal' %}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                    <i class="fas fa-globe mr-1"></i>
-                                    dLocal
-                                </span>
-                            {% else %}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                    <i class="fas fa-question-circle mr-1"></i>
-                                    {{ primary_payment_method|title }}
-                                </span>
-                            {% endif %}
-                        </div>
+                    <div class="flex-shrink-0">
+                        {% if primary_payment_method == 'stripe' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                <i class="fas fa-credit-card mr-1"></i>
+                                Stripe
+                            </span>
+                        {% elif primary_payment_method == 'dlocal' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                <i class="fas fa-globe mr-1"></i>
+                                dLocal
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                <i class="fas fa-question-circle mr-1"></i>
+                                {{ primary_payment_method|title }}
+                            </span>
+                        {% endif %}
                     </div>
                 </div>
             </div>
