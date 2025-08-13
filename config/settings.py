@@ -32,7 +32,8 @@ SECRET_KEY = 'django-insecure-oiuezm+9(-xbr3qky&p^*s!=49c0_1(3ku%6*f=84z82y7*za8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['change.checkout.conquerx.com', 'localhost', '127.0.0.1']
+CSRF_TRUSTED_ORIGINS = ['https://change.checkout.conquerx.com', 'http://localhost:8000', 'http://127.0.0.1:8000']
 
 # Email encryption key for URL protection
 EMAIL_ENCRYPTION_KEY = config('EMAIL_ENCRYPTION_KEY').encode()
@@ -94,16 +95,14 @@ if db_host.startswith('/') or db_host.endswith('.sock'):
     # Para sockets Unix, usar OPTIONS con unix_socket y HOST vacío
     db_options = {'unix_socket': db_host}
     db_host = ''
+    
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
