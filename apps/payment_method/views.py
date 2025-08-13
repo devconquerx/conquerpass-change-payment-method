@@ -129,7 +129,32 @@ class ChangePaymentMethodView(View):
                 details_result = dlocal_service.get_subscription_details(plan_id, subscription_id)
                 
                 if details_result['success']:
-                    context['dlocal_subscription_details'] = [details_result['data']]
+                    subscription_data = details_result['data']
+                    
+                    # Obtener el monto correcto de la siguiente cuota
+                    latest_processing_installment = payment_info.get('latest_processing_installment')
+                    
+                    if latest_processing_installment:
+                        current_payment_number = latest_processing_installment.get('payment_number', 0)
+                        
+                        # Buscar la siguiente cuota en las órdenes estructuradas
+                        next_installment = None
+                        for order_group in structured_result['structured_orders']:
+                            for installment in order_group['installments']:
+                                installment_payment_number = installment.get('payment_number', 0)
+                                if installment_payment_number == current_payment_number + 1:
+                                    next_installment = installment
+                                    break
+                            if next_installment:
+                                break
+                        
+                        if next_installment:
+                            # Reemplazar el monto del next_payment con el de la siguiente cuota
+                            next_amount = float(next_installment['total_amount'])
+                            subscription_data['next_payment']['amount'] = next_amount
+                            subscription_data['plan']['amount'] = next_amount
+                    
+                    context['dlocal_subscription_details'] = [subscription_data]
                 else:
                     context['dlocal_subscription_details'] = []
             else:
@@ -272,6 +297,42 @@ class InitiateDLocalPaymentChangeView(View):
             plan = subscription_data['plan']
             next_payment = subscription_data.get('next_payment', {})
             
+            # Obtener órdenes estructuradas para encontrar la última cuota wc-processing
+            wp_service = WordPressService()
+            structured_result = wp_service.get_customer_orders_structured(customer_email)
+            
+            if structured_result['success']:
+                payment_info = wp_service.get_customer_payment_methods(structured_result['structured_orders'])
+                latest_processing_installment = payment_info.get('latest_processing_installment')
+                
+                if latest_processing_installment:
+                    # Buscar la próxima cuota después de la última wc-processing
+                    current_payment_number = latest_processing_installment.get('payment_number', 0)
+                    
+                    # Buscar la siguiente cuota en todas las órdenes estructuradas
+                    next_installment = None
+                    for order_group in structured_result['structured_orders']:
+                        for installment in order_group['installments']:
+                            installment_payment_number = installment.get('payment_number', 0)
+                            if installment_payment_number == current_payment_number + 1:
+                                next_installment = installment
+                                break
+                        if next_installment:
+                            break
+                    
+                    if next_installment:
+                        # Usar el monto de la siguiente cuota en lugar del next_payment de dLocal
+                        next_payment_amount = float(next_installment['total_amount'])
+                    else:
+                        # Si no hay siguiente cuota, usar el monto del next_payment de dLocal
+                        next_payment_amount = next_payment['amount']
+                else:
+                    # Si no hay cuota wc-processing, usar el monto del next_payment de dLocal
+                    next_payment_amount = next_payment['amount']
+            else:
+                # Si hay error obteniendo órdenes, usar el monto del next_payment de dLocal
+                next_payment_amount = next_payment['amount']
+            
             if not next_payment.get('can_estimate'):
                 return JsonResponse({
                     'success': False,
@@ -281,10 +342,10 @@ class InitiateDLocalPaymentChangeView(View):
             # Crear un nuevo plan con la misma configuración
             new_plan_data = {
                 'name': f"{plan['name']} - Cambio de Método de Pago",
-                'description': f"Plan para cambio de método de pago - Original: {plan['description']}",
+                'description': f"Cambio de método de pago",
                 'country': plan.get('country'),
                 'currency': plan['currency'],
-                'amount': next_payment['amount'],
+                'amount': next_payment_amount,
                 'frequency_type': plan['frequency_type'],
                 'frequency_value': plan.get('frequency_value', 1),
                 'success_url': f"{request.build_absolute_uri('/').rstrip('/')}/metodo-pago/change/{encrypted_email}/success/",
@@ -293,17 +354,24 @@ class InitiateDLocalPaymentChangeView(View):
                 'notification_url': settings.CONQUERPASS_DLOCAL_WEBHOOK
             }
             
+            logger.info(f"[DLOCAL PAYMENT CHANGE] Creating new plan with amount: {next_payment_amount}")
+            
             # Remover campos opcionales si están vacíos
             if not new_plan_data['country']:
                 del new_plan_data['country']
             
+            logger.info(f"[DLOCAL PAYMENT CHANGE] Sending plan data to dLocal: {new_plan_data}")
+            
             create_plan_result = dlocal_service.create_plan(new_plan_data)
             
+            logger.info(f"[DLOCAL PAYMENT CHANGE] dLocal create_plan response: {create_plan_result}")
+            
             if not create_plan_result['success']:
+                logger.error(f"[DLOCAL PAYMENT CHANGE] Failed to create plan: {create_plan_result.get('error', 'Unknown error')}")
                 return JsonResponse({
                     'success': False,
                     'error': 'No se pudo crear el plan para el cambio de método de pago.',
-                    'details': create_plan_result['error']
+                    'details': create_plan_result.get('error', 'Error desconocido')
                 }, status=500)
             
             new_plan = create_plan_result['data']
@@ -316,7 +384,6 @@ class InitiateDLocalPaymentChangeView(View):
                 }, status=500)
             
             # Guardar la ID del nuevo plan como metadato en la orden padre
-            wp_service = WordPressService()
             structured_result = wp_service.get_customer_orders_structured(customer_email)
             
             if structured_result['success']:
@@ -352,7 +419,7 @@ class InitiateDLocalPaymentChangeView(View):
                 'original_plan_id': plan_id,
                 'original_subscription_id': subscription_id,
                 'next_payment_info': {
-                    'amount': next_payment['amount'],
+                    'amount': next_payment_amount,
                     'currency': next_payment['currency'],
                     'estimated_date': next_payment.get('estimated_date')
                 }
