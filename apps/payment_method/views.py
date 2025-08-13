@@ -296,10 +296,10 @@ class InitiateDLocalPaymentChangeView(View):
                 'amount': next_payment['amount'],
                 'frequency_type': plan['frequency_type'],
                 'frequency_value': plan.get('frequency_value', 1),
-                'success_url': f"{request.build_absolute_uri('/').rstrip('/')}/payment-method/change/{encrypted_email}/success/",
-                'back_url': f"{request.build_absolute_uri('/').rstrip('/')}/payment-method/change/{encrypted_email}/",
-                'error_url': f"{request.build_absolute_uri('/').rstrip('/')}/payment-method/change/{encrypted_email}/error/",
-                'notification_url': f"{request.build_absolute_uri('/').rstrip('/')}/payment-method/dlocal-webhook/"
+                'success_url': f"{request.build_absolute_uri('/').rstrip('/')}/metodo-pago/change/{encrypted_email}/success/",
+                'back_url': f"{request.build_absolute_uri('/').rstrip('/')}/metodo-pago/change/{encrypted_email}/",
+                'error_url': f"{request.build_absolute_uri('/').rstrip('/')}/metodo-pago/change/{encrypted_email}/error/",
+                'notification_url': settings.CONQUERPASS_DLOCAL_WEBHOOK
             }
             
             # Remover campos opcionales si están vacíos
@@ -323,6 +323,32 @@ class InitiateDLocalPaymentChangeView(View):
                     'success': False,
                     'error': 'No se pudo generar la URL de pago.'
                 }, status=500)
+            
+            # Guardar la ID del nuevo plan como metadato en la orden padre
+            wp_service = WordPressService()
+            structured_result = wp_service.get_customer_orders_structured(customer_email)
+            
+            if structured_result['success']:
+                payment_info = wp_service.get_customer_payment_methods(structured_result['structured_orders'])
+                parent_order_id = payment_info.get('latest_processing_parent_order_id')
+                
+                if parent_order_id:
+                    # Guardar la ID del nuevo plan temporalmente en la orden padre
+                    update_result = wp_service.update_order_meta(
+                        order_id=parent_order_id,
+                        meta_key='_dlocal_temp_new_plan_id',
+                        meta_value=str(new_plan['id'])
+                    )
+                    
+                    # Log del resultado pero no fallar si hay error en WordPress
+                    if update_result['success']:
+                        logger.info(f"Guardada nueva plan ID {new_plan['id']} para orden padre {parent_order_id}")
+                    else:
+                        logger.warning(f"Error guardando nueva plan ID en WordPress: {update_result['error']}")
+                else:
+                    logger.warning("No se encontró orden padre para guardar la nueva plan ID")
+            else:
+                logger.warning(f"Error obteniendo órdenes para guardar nueva plan ID: {structured_result['error']}")
             
             # Guardar información del proceso en la sesión o base de datos si es necesario
             # Por simplicidad, se incluye en la respuesta
@@ -352,3 +378,33 @@ class InitiateDLocalPaymentChangeView(View):
                 'success': False,
                 'error': 'Ha ocurrido un error inesperado. Por favor, intenta nuevamente.'
             }, status=500)
+
+
+class PaymentChangeSuccessView(View):
+    def get(self, request, encrypted_email):
+        try:
+            customer_email = decrypt_email(encrypted_email)
+            context = {
+                'customer_email': customer_email,
+                'success': True,
+                'message': 'Tu método de pago ha sido actualizado exitosamente.',
+            }
+            return render(request, 'payment_method/payment_change_result.html', context)
+        except Exception as e:
+            logger.error(f"Error en página de éxito para {encrypted_email}: {str(e)}")
+            return redirect('payment_method:cambiar_metodo_pago', encrypted_email=encrypted_email)
+
+
+class PaymentChangeErrorView(View):
+    def get(self, request, encrypted_email):
+        try:
+            customer_email = decrypt_email(encrypted_email)
+            context = {
+                'customer_email': customer_email,
+                'success': False,
+                'message': 'Hubo un problema al actualizar tu método de pago. Por favor, intenta nuevamente.',
+            }
+            return render(request, 'payment_method/payment_change_result.html', context)
+        except Exception as e:
+            logger.error(f"Error en página de error para {encrypted_email}: {str(e)}")
+            return redirect('payment_method:cambiar_metodo_pago', encrypted_email=encrypted_email)

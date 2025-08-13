@@ -203,3 +203,4 @@ LOGGING = {
 DLOCAL_API_KEY = config('DLOCAL_API_KEY', default='')
 DLOCAL_SECRET_KEY = config('DLOCAL_SECRET_KEY', default='')
 DLOCAL_BASE_URL = config('DLOCAL_BASE_URL', default='https://api-sbx.dlocalgo.com')
+CONQUERPASS_DLOCAL_WEBHOOK = config('CONQUERPASS_DLOCAL_WEBHOOK', default='')

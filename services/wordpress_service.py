@@ -300,6 +300,7 @@ class WordPressService:
             'payment_method': payment_method,
             'payment_details': payment_details,
             'latest_processing_installment': latest_processing_installment,
+            'latest_processing_parent_order_id': parent_order_of_latest_installment['id'] if parent_order_of_latest_installment else None,
             'has_active_payment': payment_method != 'unknown'
         }
 
