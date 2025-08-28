@@ -187,7 +187,7 @@ class DLocalService:
                 'executions_count': len(executions),
                 'next_payment': next_payment_info,
                 'total_elements': executions_data.get('total_elements', len(executions)),
-                'can_change_payment_method': subscription.get('active', False)
+                'can_change_payment_method': True
             }
         }
     
