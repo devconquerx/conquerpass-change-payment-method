@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.views import View
 from django.conf import settings
@@ -44,7 +44,6 @@ class ChangePaymentMethodView(View):
         
         # Obtener información del método de pago usando la nueva API
         payment_info = wp_service.get_customer_payment_methods(structured_result['structured_orders'])
-        
         
         # Si no tiene órdenes, mostrar error
         if structured_result['summary']['total_installments'] == 0:
@@ -159,7 +158,6 @@ class ChangePaymentMethodView(View):
                     context['dlocal_subscription_details'] = []
             else:
                 context['dlocal_subscription_details'] = []
-        
         return render(request, 'payment_method/change_payment_method.html', context)
     
     def _get_payment_method_display_name(self, payment_method):

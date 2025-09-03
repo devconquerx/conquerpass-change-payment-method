@@ -372,7 +372,13 @@ class WordPressService:
 
     def _get_installments_with_metadata(self, parent_order_id: int) -> List[Dict[str, Any]]:
         """
-        Obtiene todas las cuotas (shop_order) de una orden principal con todos sus metadatos.
+        Obtiene todas las cuotas (shop_order) asociadas a una orden madre usando la relación
+        correcta vía la tabla de metadatos:
+        1. Primero se buscan en wp_wc_orders_meta los registros donde meta_key = '_asp_upp_schedule_payment'
+           y meta_value = parent_order_id. Cada registro retornado representa una cuota y su order_id es
+           el ID de la cuota.
+        2. Con esa lista de IDs se consultan los datos base en wp_wc_orders.
+        3. Se ordenan por el meta '_asp_upp_payment_number' (numérico ascendente).
         
         Args:
             parent_order_id (int): ID de la orden principal
@@ -384,7 +390,25 @@ class WordPressService:
             connection = self._get_connection()
             
             with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-                query = """
+                # 1. Obtener IDs de cuotas asociadas a la orden madre incluyendo:
+                #    - _asp_upp_initial_payment (primer pago)
+                #    - _asp_upp_schedule_payment (resto de cuotas)
+                installments_ids_query = """
+                    SELECT DISTINCT order_id 
+                    FROM wp_wc_orders_meta 
+                    WHERE meta_value = %s AND meta_key IN ('_asp_upp_initial_payment','_asp_upp_schedule_payment')
+                """
+                cursor.execute(installments_ids_query, (parent_order_id,))
+                rows = cursor.fetchall()
+                installment_ids = list({r['order_id'] for r in rows})  # eliminar duplicados si existieran
+
+                if not installment_ids:
+                    return []
+
+                # 2. Obtener datos base de las cuotas
+                # Usamos IN (%s,...). Para evitar problemas con lista vacía ya retornamos antes.
+                placeholders = ','.join(['%s'] * len(installment_ids))
+                base_query = f"""
                     SELECT 
                         o.id,
                         o.status,
@@ -393,53 +417,40 @@ class WordPressService:
                         o.total_amount,
                         o.payment_method,
                         o.payment_method_title,
-                        o.type,
-                        GROUP_CONCAT(
-                            CONCAT(om.meta_key, ':', om.meta_value) 
-                            SEPARATOR '||'
-                        ) as metadata
+                        o.type
                     FROM wp_wc_orders o
-                    LEFT JOIN wp_wc_orders_meta om ON o.id = om.order_id
-                    LEFT JOIN wp_wc_orders_meta om_parent ON o.id = om_parent.order_id 
-                        AND om_parent.meta_key = '_asp_upp_schedule_payment'
-                    WHERE o.type = 'shop_order' AND (
-                        om_parent.meta_value = %s OR 
-                        o.id = %s
-                    )
-                    GROUP BY o.id, o.status, o.date_created_gmt, o.billing_email, o.total_amount, o.payment_method, o.payment_method_title, o.type
-                    ORDER BY CAST(
-                        COALESCE(
-                            (SELECT meta_value FROM wp_wc_orders_meta WHERE order_id = o.id AND meta_key = '_asp_upp_payment_number'),
-                            '0'
-                        ) AS UNSIGNED
-                    ) ASC
+                    WHERE o.id IN ({placeholders})
                 """
-                
-                # La primera cuota siempre tiene ID = parent_order_id - 1
-                first_installment_id = parent_order_id - 1
-                cursor.execute(query, (parent_order_id, first_installment_id))
+                cursor.execute(base_query, installment_ids)
                 installments = cursor.fetchall()
-                
-                # Procesar metadatos - consultando por separado para evitar truncamiento de GROUP_CONCAT
+
+                # 3. Enriquecer con metadatos y calcular payment_number
                 for installment in installments:
                     order_id = installment['id']
-                    
-                    # Consulta separada para metadatos de esta orden específica
+
                     metadata_query = """
-                        SELECT meta_key, meta_value 
-                        FROM wp_wc_orders_meta 
+                        SELECT meta_key, meta_value
+                        FROM wp_wc_orders_meta
                         WHERE order_id = %s
                     """
                     cursor.execute(metadata_query, (order_id,))
                     metadata_rows = cursor.fetchall()
-                    
+
                     metadata_dict = {}
                     for row in metadata_rows:
                         metadata_dict[row['meta_key']] = row['meta_value']
-                    
+
                     installment['metadata_dict'] = metadata_dict
-                    installment['payment_number'] = int(metadata_dict.get('_asp_upp_payment_number', 0))
-                    
+                    try:
+                        installment['payment_number'] = int(metadata_dict.get('_asp_upp_payment_number', 0))
+                    except ValueError:
+                        installment['payment_number'] = 0
+
+                # 4. Ordenar en memoria por payment_number (asc)
+                installments.sort(key=lambda x: x.get('payment_number', 0))
+
+                # Log eliminado (antes detallaba cuotas recuperadas)
+
                 return installments
                 
         except Exception as e:
